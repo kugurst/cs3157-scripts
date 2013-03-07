@@ -9,8 +9,12 @@ public class Grader
 	File	    isin	= new File("src/isort.in");
 	
 	// The standard error and output streams. Saving them as they will be redirected
-	PrintStream	out	 = System.out;
-	PrintStream	err	 = System.err;
+	PrintStream	stdout	= System.out;
+	PrintStream	stderr	= System.err;
+	
+	// The output and error stream for messages produced by this class.
+	PrintStream	out;
+	PrintStream	err;
 	
 	public Grader(String root)
 	{
@@ -20,7 +24,7 @@ public class Grader
 			if (f.isDirectory()) {
 				// If grader_mod was run to produce the directories, then f.getName() returns the
 				// UNI/username of the student we are currently checking
-				out.println("Verifying " + f.getName() + "...");
+				stdout.println("Verifying " + f.getName() + "...");
 				
 				// Redirect System.err and System.out to the results file
 				File results = new File(f, "GRADE_RESULTS.txt");
@@ -33,8 +37,22 @@ public class Grader
 					System.setOut(resultsStream);
 				}
 				catch (IOException e) {
-					System.setErr(System.err);
-					err.println("Unable to redirect output to file");
+					stderr.println("Unable to redirect output to file");
+					e.printStackTrace();
+				}
+				
+				// This class uses its own streams for reading and writing.
+				File summary = new File(f, "SUMMARY.txt");
+				try {
+					if (summary.isFile())
+						summary.delete();
+					summary.createNewFile();
+					PrintStream summaryStream = new PrintStream(summary);
+					out = summaryStream;
+					err = summaryStream;
+				}
+				catch (IOException e) {
+					stderr.println("Unable to redirect output to file");
 					e.printStackTrace();
 				}
 				
