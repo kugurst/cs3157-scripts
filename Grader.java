@@ -52,7 +52,7 @@ public class Grader
 					err = summaryStream;
 				}
 				catch (IOException e) {
-					stderr.println("Unable to redirect output to file");
+					stderr.println("Unable to redirect output to file.");
 					e.printStackTrace();
 				}
 				
@@ -66,6 +66,7 @@ public class Grader
 					err.println(f.getName() + " GIT-");
 				// End GIT commit verification //
 				
+				System.out.println("Isort verification:");
 				// isort make verification //
 				File isortDir = new File(f, "part1");
 				boolean goodMake = Checks.checkMake(isortDir, "isort");
@@ -90,6 +91,8 @@ public class Grader
 				else
 					err.println(f.getName() + " isort: make clean-");
 				// end isort make clean verification //
+				
+				System.out.println("\nTwecho verification:");
 				
 				// twecho make verification //
 				File twDir = new File(f, "part2");

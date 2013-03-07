@@ -34,6 +34,7 @@ public final class Checks
 	
 	public static boolean checkMakeClean(File partDir, String makeName)
 	{
+		System.out.println("Checking make clean:");
 		// Holding the return value. We still need to clean up the directory
 		boolean cleanWorked = true;
 		// Checking to make sure they did part 1.
@@ -88,11 +89,13 @@ public final class Checks
 				f.delete();
 				cleanWorked = false;
 			}
+		System.out.println();
 		return cleanWorked;
 	}
 	
 	public static boolean testCommand(File partDir, String commandName, File inputFile)
 	{
+		System.out.println("Command results:");
 		// Check to make sure the directory exists (i.e. they did this part)
 		if (partDir == null)
 			return false;
@@ -142,7 +145,7 @@ public final class Checks
 					int success = partProc.waitFor();
 					if (allSuccess && success != 0)
 						allSuccess = false;
-					System.out.println("Return code: " + success);
+					System.out.println("Return code: " + success + "\n");
 				}
 				in.close();
 			}
@@ -205,11 +208,13 @@ public final class Checks
 				e.printStackTrace();
 			}
 		}
+		System.out.println();
 		return allSuccess;
 	}
 	
 	public static boolean checkMake(File partDir, String makeName)
 	{
+		System.out.println("Make results:");
 		Process partProc = null;
 		if (!partDir.isDirectory())
 			return false;
@@ -263,6 +268,7 @@ public final class Checks
 				break;
 			}
 		}
+		System.out.println();
 		if (goodMake == 0 && foundExec)
 			return true;
 		return false;
@@ -275,6 +281,7 @@ public final class Checks
 	
 	public static boolean checkGitCommits(File gitNotes)
 	{
+		System.out.println("Checking git commits:");
 		int goodCommits = 0;
 		LinkedList<String> commitList = new LinkedList<String>();
 		try {
@@ -306,10 +313,12 @@ public final class Checks
 		if (goodCommits >= 5) {
 			for (String s : commitList)
 				System.out.println(s);
+			System.out.println();
 			return true;
 		}
 		for (String s : commitList)
 			System.err.println(s);
+		System.out.println();
 		return false;
 	}
 	
