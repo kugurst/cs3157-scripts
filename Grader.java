@@ -2,6 +2,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Scanner;
@@ -33,7 +34,7 @@ public class Grader
 	ExecutorService	exec	   = Executors.newFixedThreadPool(2);
 	
 	// The input file for isort
-	File	        isin	   = new File("isort.in");
+	File	        isin	   = new File("src/isort.in");
 	
 	public Grader(String root)
 	{
@@ -41,6 +42,8 @@ public class Grader
 		File rootDir = new File(root);
 		for (File f : rootDir.listFiles()) {
 			if (f.isDirectory()) {
+				// If grader_mod was run to produce the directories, then f.getName() returns the
+				// UNI/username of the student we are currently checking
 				System.out.println("Verifying " + f.getName() + "...");
 				
 				// GIT commit verification //
@@ -55,12 +58,19 @@ public class Grader
 				
 				// isort make verification //
 				File isortDir = new File(f, "part1");
-				// boolean goodMake = checkMake(isortDir, "isort");
-				// if (goodMake)
-				// System.out.println(f.getName() + " isort: make+");
-				// else
-				// System.err.println(f.getName() + " isort: make-");
+				boolean goodMake = checkMake(isortDir, "isort");
+				if (goodMake)
+					System.out.println(f.getName() + " isort: make+");
+				else
+					System.err.println(f.getName() + " isort: make-");
 				// end isort make verification //
+				
+				// isort verification //
+				boolean goodIsort = testCommand(isortDir, "isort", isin);
+				if (goodIsort)
+					System.out.println(f.getName() + "isort: test+");
+				else
+					System.err.println(f.getName() + "isort: test-");
 				
 				// Making sure their make clean actually worked:
 				boolean cleanWorked = true;
@@ -75,8 +85,126 @@ public class Grader
 				else
 					System.err.println(f.getName() + " isort: make clean-");
 			}
+			break;
 		}
 		exec.shutdownNow();
+	}
+	
+	private boolean testCommand(File partDir, String commandName, File inputFile)
+	{
+		// Check to make sure the directory exists (i.e. they did this part)
+		if (partDir == null)
+			return false;
+		// A boolean to say if all runs were successful
+		boolean allSuccess = true;
+		// Open up the input file for reading, if it exists
+		if (inputFile != null) {
+			try {
+				Scanner in = new Scanner(inputFile);
+				while (in.hasNextLine()) {
+					String line = in.nextLine();
+					System.out.println("Testing " + commandName + " with input: " + line);
+					Process partProc =
+					        runtime.exec("valgrind --leak-check=yes ./" + commandName, null,
+					                partDir);
+					final Scanner stdout = new Scanner(partProc.getInputStream());
+					final Scanner stderr = new Scanner(partProc.getErrorStream());
+					// Print the stdout of this process
+					exec.execute(new Runnable() {
+						@Override
+						public void run()
+						{
+							while (stdout.hasNextLine()) {
+								System.err.flush();
+								System.out.println(stdout.nextLine());
+							}
+							stdout.close();
+						}
+					});
+					// Print the stderr of this process
+					exec.execute(new Runnable() {
+						@Override
+						public void run()
+						{
+							while (stderr.hasNextLine()) {
+								System.err.flush();
+								System.out.println(stderr.nextLine());
+							}
+							stderr.close();
+						}
+					});
+					// Pipe the input line to the process
+					PrintWriter stdin = new PrintWriter(partProc.getOutputStream());
+					stdin.println(line);
+					stdin.flush();
+					stdin.close();
+					int success = partProc.waitFor();
+					if (allSuccess && success != 0)
+						allSuccess = false;
+					System.out.println("Return code: " + success);
+				}
+				in.close();
+			}
+			catch (FileNotFoundException e) {
+				System.err.println(inputFile.getPath() + " does not exist.");
+				e.printStackTrace();
+			}
+			catch (IOException e) {
+				System.err.println("Could not run the specified command.");
+				e.printStackTrace();
+			}
+			catch (InterruptedException e) {
+				System.err.println("Interrupted while waiting for process to termingate.");
+				e.printStackTrace();
+			}
+		}
+		// Otherwise, simply run the specified command
+		else {
+			try {
+				System.out.println("Testing " + commandName);
+				Process partProc =
+				        runtime.exec("valgrind --leak-check=yes ./" + commandName, null, partDir);
+				final Scanner stdout = new Scanner(partProc.getInputStream());
+				final Scanner stderr = new Scanner(partProc.getErrorStream());
+				// Print the stdout of this process
+				exec.execute(new Runnable() {
+					@Override
+					public void run()
+					{
+						while (stdout.hasNextLine()) {
+							System.err.flush();
+							System.out.println(stdout.nextLine());
+						}
+						stdout.close();
+					}
+				});
+				// Print the stderr of this process
+				exec.execute(new Runnable() {
+					@Override
+					public void run()
+					{
+						while (stderr.hasNextLine()) {
+							System.err.flush();
+							System.out.println(stderr.nextLine());
+						}
+						stderr.close();
+					}
+				});
+				// Check the return of the valgrind process
+				int success = partProc.waitFor();
+				if (success != 0)
+					allSuccess = false;
+			}
+			catch (IOException e) {
+				System.err.println("An error occured while trying to run: " + commandName);
+				e.printStackTrace();
+			}
+			catch (InterruptedException e) {
+				System.err.println("Interrupted while waiting for process to complete.");
+				e.printStackTrace();
+			}
+		}
+		return allSuccess;
 	}
 	
 	private boolean checkMake(File partDir, String makeName)
