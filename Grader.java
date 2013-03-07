@@ -43,21 +43,52 @@ public class Grader
 					System.err.println(f.getName() + "isort: test-");
 				// end isort verification //
 				
-				// Making sure their make clean actually worked:
+				// isort make clean verification //
 				boolean cleanWorked = Checks.checkMakeClean(isortDir, "isort");
 				if (cleanWorked)
 					System.out.println(f.getName() + " isort: make clean+");
 				else
 					System.err.println(f.getName() + " isort: make clean-");
+				// end isort make clean verification //
+				
+				// twecho make verification //
+				File twDir = new File(f, "part2");
+				goodMake = Checks.checkMake(twDir, "twecho");
+				if (goodMake)
+					System.out.println(f.getName() + " twecho: make+");
+				else
+					System.err.println(f.getName() + " twecho: make-");
+				// end twecho make verification //
+				
+				// twecho verification //
+				boolean[] twechoSuccess = new boolean[3];
+				twechoSuccess[0] = Checks.testCommand(twDir, "twecho hello world dude", null);
+				twechoSuccess[1] =
+				        Checks.testCommand(twDir, "twecho 129!oihd as923!#0 njkdas54%()", null);
+				twechoSuccess[2] = Checks.testCommand(twDir, "twecho I AM IN ALL CAPS 1", null);
+				boolean goodTwecho = true;
+				for (boolean success : twechoSuccess)
+					if (!success)
+						goodTwecho = false;
+				if (goodTwecho)
+					System.out.println(f.getName() + "twecho: test+");
+				else
+					System.err.println(f.getName() + "twecho: test-");
+				// end twecho verification //
+				
+				// twecho make clean verification //
+				cleanWorked = Checks.checkMakeClean(twDir, "twecho");
+				if (cleanWorked)
+					System.out.println(f.getName() + " twecho: make clean+");
+				else
+					System.err.println(f.getName() + " twecho: make clean-");
+				// end twecho make clean verification //
 			}
 			break;
 		}
 		Checks.shutdown();
 	}
 	
-	/**
-	 * @param args
-	 */
 	public static void main(String[] args)
 	{
 		new Grader("dat");

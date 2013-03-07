@@ -32,16 +32,62 @@ public final class Checks
 	// The thread executor used for printing the stdout and stderr of the run commands
 	static ExecutorService	exec	   = Executors.newFixedThreadPool(2);
 	
-	public static boolean checkMakeClean(File isortDir, String string)
+	public static boolean checkMakeClean(File partDir, String makeName)
 	{
 		// Holding the return value. We still need to clean up the directory
 		boolean cleanWorked = true;
-		if (isortDir.listFiles() != null)
-			for (File ff : isortDir.listFiles())
-				if (ff.getName().endsWith(".o") || ff.getName().compareTo("isort") == 0) {
-					ff.delete();
-					cleanWorked = false;
+		// Checking to make sure they did part 1.
+		if (partDir == null || partDir.listFiles() == null)
+			return false;
+		// Run make clean in the current directory.
+		try {
+			Process makeClean = runtime.exec("make clean", null, partDir);
+			final Scanner stdout = new Scanner(makeClean.getInputStream());
+			final Scanner stderr = new Scanner(makeClean.getErrorStream());
+			// Print the stdout of this process
+			exec.execute(new Runnable() {
+				@Override
+				public void run()
+				{
+					while (stdout.hasNextLine()) {
+						System.err.flush();
+						System.out.println(stdout.nextLine());
+					}
+					stdout.close();
 				}
+			});
+			// Print the stderr of this process
+			exec.execute(new Runnable() {
+				@Override
+				public void run()
+				{
+					while (stderr.hasNextLine()) {
+						System.err.flush();
+						System.out.println(stderr.nextLine());
+					}
+					stderr.close();
+				}
+			});
+			// Wait for the command to finish
+			int success = makeClean.waitFor();
+			if (success != 0)
+				cleanWorked = false;
+		}
+		catch (IOException e) {
+			System.err.println("Unable to run make clean in directory: " + partDir);
+			e.printStackTrace();
+		}
+		catch (InterruptedException e) {
+			System.err.println("Interrupted while waiting for make clean to finish.");
+			e.printStackTrace();
+		}
+		// Checking to make sure that make clean removed everything it should
+		for (File f : partDir.listFiles())
+			if (f.getName().endsWith(".o") || f.getName().compareTo(makeName) == 0
+			        || f.getName().compareTo("core") == 0 || f.getName().compareTo("a.out") == 0) {
+				f.delete();
+				cleanWorked = false;
+			}
 		return cleanWorked;
 	}
 	
