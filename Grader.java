@@ -127,7 +127,6 @@ public class Grader
 					err.println(f.getName() + " twecho: make clean-");
 				// end twecho make clean verification //
 			}
-			break;
 		}
 		Checks.shutdown();
 	}
