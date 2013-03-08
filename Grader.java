@@ -134,7 +134,14 @@ public class Grader
 	
 	public static void main(String[] args)
 	{
-		new Grader("./");
+		Grader grader = null;
+		try {
+			grader = new Grader("./");
+		}
+		catch (Exception e) {
+			System.setErr(grader.stderr);
+			e.printStackTrace();
+		}
 	}
 	
 }
