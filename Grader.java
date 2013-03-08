@@ -134,7 +134,7 @@ public class Grader
 	
 	public static void main(String[] args)
 	{
-		new Grader("dat");
+		new Grader("./");
 	}
 	
 }
