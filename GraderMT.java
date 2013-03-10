@@ -2,28 +2,63 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class GraderMT
 {
 	// The input file for isort
-	File	    isin	= new File("src/isort.in");
-	
-	// The output and error stream for messages produced by this class.
-	PrintStream	out;
-	PrintStream	err;
+	File	         isin	   = new File("src/isort.in");
+	static GitFilter	filter	= new GitFilter();
 	
 	public GraderMT(String root, int threads)
 	{
 		// We'll be single threaded to populate our list with all folders to check.
-		GitFilter filter = new GitFilter();
 		File rootDir = new File(root);
-		for (File f : rootDir.listFiles()) {
-			if (f.isDirectory() && !f.getName().startsWith(".")) {
+		ConcurrentLinkedQueue<File> uniDirs = new ConcurrentLinkedQueue<File>();
+		for (File f : rootDir.listFiles())
+			if (f.isDirectory() && !f.getName().startsWith("."))
+				uniDirs.add(f);
+		// Then, spawn the requested number of threads
+		Thread[] workers = new Thread[threads];
+		for (int i = 0; i < threads; i++) {
+			workers[i] = new Thread(new GraderWorker(uniDirs));
+			workers[i].start();
+		}
+		// Wait for them to all finish
+		for (Thread worker : workers)
+			try {
+				worker.join();
+			}
+			catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		// That's it
+	}
+	
+	class GraderWorker implements Runnable
+	{
+		// The output and error stream for messages produced by this class.
+		PrintStream		            out;
+		PrintStream		            err;
+		
+		// The folder queue
+		ConcurrentLinkedQueue<File>	uniDirs;
+		
+		public GraderWorker(ConcurrentLinkedQueue<File> queue)
+		{
+			uniDirs = queue;
+		}
+		
+		@Override
+		public void run()
+		{
+			File f = null;
+			while ((f = uniDirs.poll()) != null) {
 				// The Checker Object for this student. Each student gets their own
 				Checks check = null;
 				// If grader_mod was run to produce the directories, then f.getName() returns the
 				// UNI/username of the student we are currently checking
-				System.out.println("Verifying " + f.getName() + "...");
+				System.out.println(Thread.currentThread() + ": Verifying " + f.getName() + "...");
 				
 				// Redirect System.err and System.out to the results file
 				File results = new File(f, "GRADE_RESULTS.txt");
@@ -140,13 +175,12 @@ public class GraderMT
 				// Clean up
 				check.shutdown();
 			}
-			break;
 		}
 	}
 	
 	public static void main(String[] args)
 	{
-		int threads = Runtime.getRuntime().availableProcessors();
+		int threads = (int) Math.round(Runtime.getRuntime().availableProcessors());
 		if (args.length == 1)
 			if (Integer.parseInt(args[0]) < threads)
 				threads = Integer.parseInt(args[0]);
