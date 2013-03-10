@@ -154,15 +154,14 @@ public class Grader
 		}
 	}
 	
-}
-
-class GitFilter implements FilenameFilter
-{
-	@Override
-	public boolean accept(File dir, String name)
+	class GitFilter implements FilenameFilter
 	{
-		if (name.compareTo("GIT_PATCH.txt") == 0)
-			return true;
-		return false;
+		@Override
+		public boolean accept(File dir, String name)
+		{
+			if (name.compareTo("GIT_PATCH.txt") == 0)
+				return true;
+			return false;
+		}
 	}
 }

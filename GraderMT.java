@@ -1,5 +1,6 @@
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -11,8 +12,8 @@ public class GraderMT
 	 * This input file contains the array sizes I use for testing isort. Change it to whatever you
 	 * named yours, or add more
 	 */
-	File	         isin	   = new File("src/isort.in");
-	static GitFilter	filter	= new GitFilter();
+	File	  isin	   = new File("src/isort.in");
+	GitFilter	filter	= new GitFilter();
 	
 	/** This constructor isn't all that interesting */
 	public GraderMT(String root, int threads)
@@ -230,4 +231,14 @@ public class GraderMT
 		}
 	}
 	
+	class GitFilter implements FilenameFilter
+	{
+		@Override
+		public boolean accept(File dir, String name)
+		{
+			if (name.compareTo("GIT_PATCH.txt") == 0)
+				return true;
+			return false;
+		}
+	}
 }
