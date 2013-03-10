@@ -117,12 +117,13 @@ public class Checks
 		out.println("Command results:");
 		// Check to make sure the directory exists (i.e. they did this part)
 		if (partDir == null)
-			return new boolean[] {false, false};
+			return new boolean[] {true, true};
 		
 		// Open up the input file for reading, if it exists
-		// Valgrind errors
+		// Valgrind error booleans
 		final AtomicBoolean memErr = new AtomicBoolean(true);
 		final AtomicBoolean leakErr = new AtomicBoolean(false);
+		int success = 1;
 		if (inputFile != null) {
 			try {
 				Scanner in = new Scanner(inputFile);
@@ -172,7 +173,7 @@ public class Checks
 					stdin.println(line);
 					stdin.flush();
 					stdin.close();
-					int success = partProc.waitFor();
+					success = partProc.waitFor();
 					out.println("Return code: " + success + "\n");
 				}
 				in.close();
@@ -180,10 +181,12 @@ public class Checks
 			catch (FileNotFoundException e) {
 				System.err.println(inputFile.getPath() + " does not exist.");
 				e.printStackTrace();
+				return new boolean[] {true, true};
 			}
 			catch (IOException e) {
 				System.err.println("Could not run the specified command.");
 				e.printStackTrace();
+				return new boolean[] {true, true};
 			}
 			catch (InterruptedException e) {
 				System.err.println("Interrupted while waiting for process to termingate.");
@@ -232,18 +235,22 @@ public class Checks
 					}
 				});
 				// Check the return of the valgrind process
-				int success = partProc.waitFor();
+				success = partProc.waitFor();
 				out.println("Return code: " + success + "\n");
 			}
 			catch (IOException e) {
 				System.err.println("An error occured while trying to run: " + commandName);
 				e.printStackTrace();
+				return new boolean[] {true, true};
 			}
 			catch (InterruptedException e) {
 				System.err.println("Interrupted while waiting for process to complete.");
 				e.printStackTrace();
 			}
 		}
+		// return code 126 for valgrind means it cannot find the file specified
+		if (success == 126)
+			return new boolean[] {true, true};
 		return new boolean[] {memErr.get(), leakErr.get()};
 	}
 	

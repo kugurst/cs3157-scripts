@@ -7,9 +7,14 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public class GraderMT
 {
 	// The input file for isort
+	/**
+	 * This input file contains the array sizes I use for testing isort. Change it to whatever you
+	 * named yours, or add more
+	 */
 	File	         isin	   = new File("src/isort.in");
 	static GitFilter	filter	= new GitFilter();
 	
+	/** This constructor isn't all that interesting */
 	public GraderMT(String root, int threads)
 	{
 		// We'll be single threaded to populate our list with all folders to check.
