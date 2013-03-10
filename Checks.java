@@ -106,6 +106,89 @@ public class Checks
 		return cleanWorked;
 	}
 	
+	public boolean[] bufferCommand(File partDir, String commandName, File inputFile)
+	{
+		out.println("Command results:");
+		// Check to make sure the directory exists (i.e. they did this part)
+		if (partDir == null)
+			return new boolean[] {true, true};
+		
+		// Open up the input file for reading, if it exists
+		// Valgrind error booleans
+		final AtomicBoolean memErr = new AtomicBoolean(true);
+		final AtomicBoolean leakErr = new AtomicBoolean(false);
+		int success = 1;
+		try {
+			out.println("Testing " + commandName + " with input file: " + inputFile);
+			Process partProc =
+			        runtime.exec("valgrind --leak-check=yes ./" + commandName, null, partDir);
+			final Scanner stdout = new Scanner(partProc.getInputStream());
+			final Scanner stderr = new Scanner(partProc.getErrorStream());
+			// Print the stdout of this process
+			exec.execute(new Runnable() {
+				@Override
+				public void run()
+				{
+					while (stdout.hasNextLine()) {
+						err.flush();
+						out.println(stdout.nextLine());
+					}
+					stdout.close();
+				}
+			});
+			// This stderr stream contains the output of valgrind. We can easily check for
+			// errors because:
+			// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
+			// (2) "LEAK SUMMARY:" being found means there were... leaks
+			exec.execute(new Runnable() {
+				@Override
+				public void run()
+				{
+					while (stderr.hasNextLine()) {
+						String line = stderr.nextLine();
+						// There was no memory error
+						if (line.contains("ERROR SUMMARY: 0"))
+							memErr.set(false);
+						if (line.contains("LEAK SUMMARY:"))
+							leakErr.set(true);
+						out.flush();
+						err.println(line);
+					}
+					stderr.close();
+				}
+			});
+			// Pipe the input line to the process
+			Scanner in = new Scanner(inputFile);
+			PrintWriter stdin = new PrintWriter(partProc.getOutputStream());
+			while (in.hasNextLine()) {
+				String line = in.nextLine();
+				stdin.println(line);
+				stdin.flush();
+			}
+			stdin.close();
+			success = partProc.waitFor();
+			out.println("Return code: " + success + "\n");
+			in.close();
+		}
+		catch (FileNotFoundException e) {
+			System.err.println(inputFile.getPath() + " does not exist.");
+			e.printStackTrace();
+			return new boolean[] {true, true};
+		}
+		catch (IOException e) {
+			System.err.println("Could not run the specified command.");
+			return new boolean[] {true, true};
+		}
+		catch (InterruptedException e) {
+			System.err.println("Interrupted while waiting for process to termingate.");
+			e.printStackTrace();
+		}
+		// return code 126 for valgrind means it cannot find the file specified
+		if (success == 126)
+			return new boolean[] {true, true};
+		return new boolean[] {memErr.get(), leakErr.get()};
+	}
+	
 	/**
 	 * @param partDir
 	 * @param commandName
@@ -185,7 +268,6 @@ public class Checks
 			}
 			catch (IOException e) {
 				System.err.println("Could not run the specified command.");
-				e.printStackTrace();
 				return new boolean[] {true, true};
 			}
 			catch (InterruptedException e) {
@@ -240,7 +322,6 @@ public class Checks
 			}
 			catch (IOException e) {
 				System.err.println("An error occured while trying to run: " + commandName);
-				e.printStackTrace();
 				return new boolean[] {true, true};
 			}
 			catch (InterruptedException e) {

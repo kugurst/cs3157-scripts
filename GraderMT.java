@@ -40,6 +40,7 @@ public class GraderMT
 		// That's it
 	}
 	
+	/** Edit me for success */
 	class GraderWorker implements Runnable
 	{
 		// The output and error stream for messages produced by this class.
@@ -66,6 +67,11 @@ public class GraderMT
 				System.out.println(Thread.currentThread() + ": Verifying " + f.getName() + "...");
 				
 				// Redirect System.err and System.out to the results file
+				/**
+				 * These are the files containing the read out of the class. GRADE_RESULTS.txt
+				 * contains the raw output of the commands run. SUMMARY.txt contains the pass/fail
+				 * decision of the commands run
+				 */
 				File results = new File(f, "GRADE_RESULTS.txt");
 				try {
 					if (results.isFile())
@@ -95,6 +101,7 @@ public class GraderMT
 				
 				// GIT commit verification //
 				// Get the file called GIT_PATCH.txt from the current project directory
+				/** Unfortunately, GIT log verification is still a very human process */
 				File gitNotes = f.listFiles(filter)[0];
 				boolean goodCommit = check.checkGitCommits(gitNotes);
 				if (goodCommit)
@@ -103,6 +110,10 @@ public class GraderMT
 					err.println(f.getName() + " GIT-");
 				// End GIT commit verification //
 				
+				/**
+				 * You can imagine replacing all instances of isort with whatever the executable for
+				 * the first project is called
+				 */
 				check.printMessage("\nIsort verification:", 0);
 				// isort make verification //
 				File isortDir = new File(f, "part1");
@@ -114,11 +125,20 @@ public class GraderMT
 				// end isort make verification //
 				
 				// isort verification //
+				/**
+				 * isin is a text file containing the sequence of inputs for the program. You don't
+				 * even have to enter anything for scanf() and the like, just type it into a file,
+				 * and this program will read it in for you. Note that it runs the program once per
+				 * input line. If you want to run one program on the entire input file, use
+				 * Checks.bufferCommand (same signature and return)
+				 */
 				boolean[] badIsort = check.testCommand(isortDir, "isort", isin);
+				// are there memory errors?
 				if (badIsort[0])
 					err.println(f.getName() + " isort: memory error-");
 				else
 					out.println(f.getName() + " isort: memory error+");
+				// are there memory leaks?
 				if (badIsort[1])
 					err.println(f.getName() + " isort: leak error-");
 				else
@@ -126,6 +146,7 @@ public class GraderMT
 				// end isort verification //
 				
 				// isort make clean verification //
+				/** Self explanitory */
 				boolean cleanWorked = check.checkMakeClean(isortDir, "isort");
 				if (cleanWorked)
 					out.println(f.getName() + " isort: make clean+");
@@ -133,6 +154,10 @@ public class GraderMT
 					err.println(f.getName() + " isort: make clean-");
 				// end isort make clean verification //
 				
+				/**
+				 * Everything here is the same as before. The only difference is the command
+				 * verification
+				 */
 				check.printMessage("\nTwecho verification:", 0);
 				
 				// twecho make verification //
@@ -145,6 +170,12 @@ public class GraderMT
 				// end twecho make verification //
 				
 				// twecho verification //
+				/**
+				 * Here, we run twecho 4 times (each return value consists of 2 booleans). Note that
+				 * there is no ./ in front o twecho. I then check to see if any of them had a memory
+				 * and/or leak error. If even one run is bad, the whole thing is bad (that is, if
+				 * one run had leak errors, then this part gets docked for leak errors)
+				 */
 				boolean[][] twechoSuccess = new boolean[4][2];
 				twechoSuccess[0] = check.testCommand(twDir, "twecho hello world dude", null);
 				twechoSuccess[1] =
@@ -170,6 +201,7 @@ public class GraderMT
 				// end twecho verification //
 				
 				// twecho make clean verification //
+				/** Self explanitory */
 				cleanWorked = check.checkMakeClean(twDir, "twecho");
 				if (cleanWorked)
 					out.println(f.getName() + " twecho: make clean+");
@@ -190,6 +222,7 @@ public class GraderMT
 			if (Integer.parseInt(args[0]) < threads)
 				threads = Integer.parseInt(args[0]);
 		try {
+			/** The first argument is the folder with all the uni's. */
 			new GraderMT("dat", threads);
 		}
 		catch (Exception e) {
