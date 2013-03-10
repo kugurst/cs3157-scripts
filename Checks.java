@@ -1,14 +1,17 @@
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-public final class Checks
+public class Checks
 {
 	// Making a HashSet<String> to hold all bad commits:
 	static HashSet<String>	badCommits	= new HashSet<String>();
@@ -30,16 +33,21 @@ public final class Checks
 	static Runtime	       runtime	   = Runtime.getRuntime();
 	
 	// The thread executor used for printing the stdout and stderr of the run commands
-	static ExecutorService	exec	   = Executors.newFixedThreadPool(2);
+	ExecutorService	       exec	       = Executors.newFixedThreadPool(2);
 	
-	public static boolean checkMakeClean(File partDir, String makeName)
+	// The stdout and stderr for this class
+	final PrintStream	   out;
+	final PrintStream	   err;
+	
+	public boolean checkMakeClean(File partDir, String makeName)
 	{
-		System.out.println("Checking make clean:");
+		out.println("Checking make clean:");
 		// Holding the return value. We still need to clean up the directory
 		boolean cleanWorked = true;
 		// Checking to make sure they did part 1.
 		if (partDir == null || partDir.listFiles() == null)
 			return false;
+		final AtomicBoolean makeErr = new AtomicBoolean(false);
 		// Run make clean in the current directory.
 		try {
 			Process makeClean = runtime.exec("make clean", null, partDir);
@@ -51,20 +59,21 @@ public final class Checks
 				public void run()
 				{
 					while (stdout.hasNextLine()) {
-						System.err.flush();
-						System.out.println(stdout.nextLine());
+						err.flush();
+						out.println(stdout.nextLine());
 					}
 					stdout.close();
 				}
 			});
-			// Print the stderr of this process
+			// If there's anything here, then an error occurred and it did not clean correctly
 			exec.execute(new Runnable() {
 				@Override
 				public void run()
 				{
 					while (stderr.hasNextLine()) {
-						System.err.flush();
-						System.out.println(stderr.nextLine());
+						makeErr.set(true);
+						out.flush();
+						err.println(stderr.nextLine());
 					}
 					stderr.close();
 				}
@@ -85,29 +94,41 @@ public final class Checks
 		// Checking to make sure that make clean removed everything it should
 		for (File f : partDir.listFiles())
 			if (f.getName().endsWith(".o") || f.getName().compareTo(makeName) == 0
-			        || f.getName().compareTo("core") == 0 || f.getName().compareTo("a.out") == 0) {
+			        || f.getName().compareTo("core") == 0 || f.getName().compareTo("a.out") == 0
+			        || f.getName().endsWith(".gch")) {
 				f.delete();
 				cleanWorked = false;
 			}
-		System.out.println();
+		err.flush();
+		out.println();
+		if (makeErr.get())
+			return false;
 		return cleanWorked;
 	}
 	
-	public static boolean testCommand(File partDir, String commandName, File inputFile)
+	/**
+	 * @param partDir
+	 * @param commandName
+	 * @param inputFile
+	 * @return <code>{memory error, leak error}</code>
+	 */
+	public boolean[] testCommand(File partDir, String commandName, File inputFile)
 	{
-		System.out.println("Command results:");
+		out.println("Command results:");
 		// Check to make sure the directory exists (i.e. they did this part)
 		if (partDir == null)
-			return false;
-		// A boolean to say if all runs were successful
-		boolean allSuccess = true;
+			return new boolean[] {false, false};
+		
 		// Open up the input file for reading, if it exists
+		// Valgrind errors
+		final AtomicBoolean memErr = new AtomicBoolean(true);
+		final AtomicBoolean leakErr = new AtomicBoolean(false);
 		if (inputFile != null) {
 			try {
 				Scanner in = new Scanner(inputFile);
 				while (in.hasNextLine()) {
 					String line = in.nextLine();
-					System.out.println("Testing " + commandName + " with input: " + line);
+					out.println("Testing " + commandName + " with input: " + line);
 					Process partProc =
 					        runtime.exec("valgrind --leak-check=yes ./" + commandName, null,
 					                partDir);
@@ -119,20 +140,29 @@ public final class Checks
 						public void run()
 						{
 							while (stdout.hasNextLine()) {
-								System.err.flush();
-								System.out.println(stdout.nextLine());
+								err.flush();
+								out.println(stdout.nextLine());
 							}
 							stdout.close();
 						}
 					});
-					// Print the stderr of this process
+					// This stderr stream contains the output of valgrind. We can easily check for
+					// errors because:
+					// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
+					// (2) "LEAK SUMMARY:" being found means there were... leaks
 					exec.execute(new Runnable() {
 						@Override
 						public void run()
 						{
 							while (stderr.hasNextLine()) {
-								System.err.flush();
-								System.out.println(stderr.nextLine());
+								String line = stderr.nextLine();
+								// There was no memory error
+								if (line.contains("ERROR SUMMARY: 0"))
+									memErr.set(false);
+								if (line.contains("LEAK SUMMARY:"))
+									leakErr.set(true);
+								out.flush();
+								err.println(line);
 							}
 							stderr.close();
 						}
@@ -143,9 +173,7 @@ public final class Checks
 					stdin.flush();
 					stdin.close();
 					int success = partProc.waitFor();
-					if (allSuccess && success != 0)
-						allSuccess = false;
-					System.out.println("Return code: " + success + "\n");
+					out.println("Return code: " + success + "\n");
 				}
 				in.close();
 			}
@@ -165,7 +193,7 @@ public final class Checks
 		// Otherwise, simply run the specified command
 		else {
 			try {
-				System.out.println("Testing " + commandName);
+				out.println("Testing " + commandName);
 				Process partProc =
 				        runtime.exec("valgrind --leak-check=yes ./" + commandName, null, partDir);
 				final Scanner stdout = new Scanner(partProc.getInputStream());
@@ -176,28 +204,36 @@ public final class Checks
 					public void run()
 					{
 						while (stdout.hasNextLine()) {
-							System.err.flush();
-							System.out.println(stdout.nextLine());
+							err.flush();
+							out.println(stdout.nextLine());
 						}
 						stdout.close();
 					}
 				});
-				// Print the stderr of this process
+				// This stderr stream contains the output of valgrind. We can easily check for
+				// errors because:
+				// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
+				// (2) "LEAK SUMMARY:" being found means there were... leaks
 				exec.execute(new Runnable() {
 					@Override
 					public void run()
 					{
 						while (stderr.hasNextLine()) {
-							System.err.flush();
-							System.out.println(stderr.nextLine());
+							String line = stderr.nextLine();
+							// There was no memory error
+							if (line.contains("ERROR SUMMARY: 0"))
+								memErr.set(false);
+							if (line.contains("LEAK SUMMARY:"))
+								leakErr.set(true);
+							out.flush();
+							err.println(line);
 						}
 						stderr.close();
 					}
 				});
 				// Check the return of the valgrind process
 				int success = partProc.waitFor();
-				if (success != 0)
-					allSuccess = false;
+				out.println("Return code: " + success + "\n");
 			}
 			catch (IOException e) {
 				System.err.println("An error occured while trying to run: " + commandName);
@@ -208,16 +244,16 @@ public final class Checks
 				e.printStackTrace();
 			}
 		}
-		System.out.println();
-		return allSuccess;
+		return new boolean[] {memErr.get(), leakErr.get()};
 	}
 	
-	public static boolean checkMake(File partDir, String makeName)
+	public boolean checkMake(File partDir, String makeName)
 	{
-		System.out.println("Make results:");
+		out.println("Make results:");
 		Process partProc = null;
 		if (!partDir.isDirectory())
 			return false;
+		final AtomicBoolean makeErr = new AtomicBoolean(false);
 		try {
 			partProc = runtime.exec("make", null, partDir);
 			final Scanner stdout = new Scanner(partProc.getInputStream());
@@ -228,20 +264,22 @@ public final class Checks
 				public void run()
 				{
 					while (stdout.hasNextLine()) {
-						System.err.flush();
-						System.out.println(stdout.nextLine());
+						err.flush();
+						out.println(stdout.nextLine());
 					}
 					stdout.close();
 				}
 			});
-			// Print the stderr of this process
+			// If anything prints to here on make, then either gcc or make had an error, in which
+			// case, this test is a fail
 			exec.execute(new Runnable() {
 				@Override
 				public void run()
 				{
 					while (stderr.hasNextLine()) {
-						System.err.flush();
-						System.out.println(stderr.nextLine());
+						makeErr.set(true);
+						out.flush();
+						err.println(stderr.nextLine());
 					}
 					stderr.close();
 				}
@@ -268,20 +306,23 @@ public final class Checks
 				break;
 			}
 		}
-		System.out.println();
-		if (goodMake == 0 && foundExec)
+		out.println();
+		if (goodMake == 0 && foundExec && !makeErr.get())
 			return true;
 		return false;
 	}
 	
-	public static void shutdown()
+	public void shutdown()
 	{
+		out.flush();
+		err.flush();
 		exec.shutdownNow();
+		out.close(); // The underlying stream is closed, so err is closed by our concern.
 	}
 	
-	public static boolean checkGitCommits(File gitNotes)
+	public boolean checkGitCommits(File gitNotes)
 	{
-		System.out.println("Checking git commits:");
+		out.println("Checking git commits:");
 		int goodCommits = 0;
 		LinkedList<String> commitList = new LinkedList<String>();
 		try {
@@ -312,19 +353,34 @@ public final class Checks
 		}
 		if (goodCommits >= 5) {
 			for (String s : commitList)
-				System.out.println(s);
-			System.out.println();
+				out.println(s);
+			out.println();
 			return true;
 		}
 		for (String s : commitList)
-			System.err.println(s);
-		System.out.println();
+			err.println(s);
+		err.println();
 		return false;
 	}
 	
-	// This is a utility class. It need not be instantiated.
-	private Checks() throws AssertionError
+	public void printMessage(String message, int stream)
 	{
-		throw new AssertionError();
+		if (stream == 0)
+			out.println(message);
+		else if (stream == 1)
+			err.print(message);
+	}
+	
+	public Checks(File target)
+	{
+		FileOutputStream fileStream = null;
+		try {
+			fileStream = new FileOutputStream(target);
+		}
+		catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
+		out = new PrintStream(fileStream);
+		err = new PrintStream(fileStream);
 	}
 }
