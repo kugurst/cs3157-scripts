@@ -365,9 +365,13 @@ public class Checks
 				public void run()
 				{
 					while (stderr.hasNextLine()) {
+						// First, check to make sure the line isn't all whitespace or empty
+						String line = stderr.nextLine();
+						if (line.trim().isEmpty())
+							continue;
 						makeErr.set(true);
 						out.flush();
-						err.println(stderr.nextLine());
+						err.println(line);
 					}
 					stderr.close();
 				}
