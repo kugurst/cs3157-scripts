@@ -12,7 +12,7 @@ public class GraderMT
 	 * This input file contains the array sizes I use for testing isort. Change it to whatever you
 	 * named yours, or add more
 	 */
-	File	  isin	   = new File("src/isort.in");
+	File	  mdbin	   = new File("src/mdb.in");
 	GitFilter	filter	= new GitFilter();
 	
 	/** This constructor isn't all that interesting */
@@ -22,7 +22,7 @@ public class GraderMT
 		File rootDir = new File(root);
 		ConcurrentLinkedQueue<File> uniDirs = new ConcurrentLinkedQueue<File>();
 		for (File f : rootDir.listFiles())
-			if (f.isDirectory() && !f.getName().startsWith("."))
+			if (f.isDirectory() && !f.getName().startsWith(".") && f.getName().equals("eo2309"))
 				uniDirs.add(f);
 		// Then, spawn the requested number of threads
 		Thread[] workers = new Thread[threads];
@@ -115,15 +115,15 @@ public class GraderMT
 				 * You can imagine replacing all instances of isort with whatever the executable for
 				 * the first project is called
 				 */
-				check.printMessage("\nIsort verification:", 0);
-				// isort make verification //
-				File isortDir = new File(f, "part1");
-				boolean goodMake = check.checkMake(isortDir, "isort");
+				check.printMessage("\nMDB-Lookup-Server verification:", 0);
+				// mdb-lookup-server make verification //
+				File mdbDir = new File(f, "part1");
+				boolean goodMake = check.checkMake(mdbDir, "mdb-lookup-server");
 				if (goodMake)
-					out.println(f.getName() + " isort: make+");
+					out.println(f.getName() + " mdb-lookup-server: make+");
 				else
-					err.println(f.getName() + " isort: make-");
-				// end isort make verification //
+					err.println(f.getName() + " mdb-lookup-server: make-");
+				// end mdb-lookup-server make verification //
 				
 				// isort verification //
 				/**
@@ -133,56 +133,63 @@ public class GraderMT
 				 * input line. If you want to run one program on the entire input file, use
 				 * Checks.bufferCommand (same signature and return)
 				 */
-				boolean[] badIsort = check.testCommand(isortDir, "isort", isin);
+				Thread.currentThread().getId();
+				boolean[] badMdb =
+				        check.mdbTest(mdbDir, "mdb-lookup-server ../../mdb-cs3157 888"
+				                + Thread.currentThread().getId(), mdbin);
 				// are there memory errors?
-				if (badIsort[0])
-					err.println(f.getName() + " isort: memory error-");
+				if (badMdb[0])
+					err.println(f.getName() + " mdb-lookup-server: memory error-");
 				else
-					out.println(f.getName() + " isort: memory error+");
+					out.println(f.getName() + " mdb-lookup-server: memory error+");
 				// are there memory leaks?
-				if (badIsort[1])
-					err.println(f.getName() + " isort: leak error-");
+				if (badMdb[1])
+					err.println(f.getName() + " mdb-lookup-server: leak error-");
 				else
-					out.println(f.getName() + " isort: leak error+");
-				// end isort verification //
+					out.println(f.getName() + " mdb-lookup-server: leak error+");
+				// end mdb-lookup-server verification //
 				
-				// isort make clean verification //
+				// mdb-lookup-server make clean verification //
 				/** Self explanitory */
-				boolean cleanWorked = check.checkMakeClean(isortDir, "isort");
+				boolean cleanWorked = check.checkMakeClean(mdbDir, "mdb-lookup-server");
 				if (cleanWorked)
-					out.println(f.getName() + " isort: make clean+");
+					out.println(f.getName() + " mdb-lookup-server: make clean+");
 				else
-					err.println(f.getName() + " isort: make clean-");
+					err.println(f.getName() + " mdb-lookup-server: make clean-");
 				// end isort make clean verification //
 				
 				/**
 				 * Everything here is the same as before. The only difference is the command
 				 * verification
 				 */
-				check.printMessage("\nTwecho verification:", 0);
+				check.printMessage("\nHTTP-Client verification:", 0);
 				
-				// twecho make verification //
-				File twDir = new File(f, "part2");
-				goodMake = check.checkMake(twDir, "twecho");
+				// http-client make verification //
+				File hcDir = new File(f, "part2");
+				goodMake = check.checkMake(hcDir, "http-client");
 				if (goodMake)
-					out.println(f.getName() + " twecho: make+");
+					out.println(f.getName() + " http-client: make+");
 				else
-					err.println(f.getName() + " twecho: make-");
-				// end twecho make verification //
+					err.println(f.getName() + " http-client: make-");
+				// end http-client make verification //
 				
-				// twecho verification //
+				// http-client verification //
 				/**
-				 * Here, we run twecho 4 times (each return value consists of 2 booleans). Note that
-				 * there is no ./ in front o twecho. I then check to see if any of them had a memory
-				 * and/or leak error. If even one run is bad, the whole thing is bad (that is, if
-				 * one run had leak errors, then this part gets docked for leak errors)
+				 * Here, we run http-client 3 times (each return value consists of 2 booleans). Note
+				 * that there is no ./ in front of http-client. I then check to see if any of them
+				 * had a memory and/or leak error. If even one run is bad, the whole thing is bad
+				 * (that is, if one run had leak errors, then this part gets docked for leak errors)
 				 */
-				boolean[][] twechoSuccess = new boolean[4][2];
-				twechoSuccess[0] = check.testCommand(twDir, "twecho hello world dude", null);
+				boolean[][] twechoSuccess = new boolean[3][2];
+				twechoSuccess[0] =
+				        check.testCommand(hcDir,
+				                "http-client www2.warnerbros.com 80 /spacejam/movie/jam.htm", null);
 				twechoSuccess[1] =
-				        check.testCommand(twDir, "twecho 129!oihd as923!#0 njkdas54%()", null);
-				twechoSuccess[2] = check.testCommand(twDir, "twecho I AM IN ALL CAPS 1", null);
-				twechoSuccess[3] = check.testCommand(twDir, "twecho", null);
+				        check.testCommand(hcDir,
+				                "http-client www.gnu.org 80 /software/make/manual/make.html", null);
+				twechoSuccess[2] =
+				        check.testCommand(hcDir, "http-client www.cplusplus.com 80 /index.html",
+				                null);
 				boolean memErr = false;
 				boolean leakErr = false;
 				for (boolean[] errSum : twechoSuccess) {
@@ -192,23 +199,23 @@ public class GraderMT
 						leakErr = true;
 				}
 				if (memErr)
-					err.println(f.getName() + " twecho: memory error-");
+					err.println(f.getName() + " http-client: memory error-");
 				else
-					out.println(f.getName() + " twecho: memory error+");
+					out.println(f.getName() + " http-client: memory error+");
 				if (leakErr)
-					err.println(f.getName() + " twecho: leak error-");
+					err.println(f.getName() + " http-client: leak error-");
 				else
-					out.println(f.getName() + " twecho: leak error+");
-				// end twecho verification //
+					out.println(f.getName() + " http-client: leak error+");
+				// end http-client verification //
 				
-				// twecho make clean verification //
-				/** Self explanitory */
-				cleanWorked = check.checkMakeClean(twDir, "twecho");
+				// http-client make clean verification //
+				/** Self explanatory */
+				cleanWorked = check.checkMakeClean(hcDir, "http-client");
 				if (cleanWorked)
-					out.println(f.getName() + " twecho: make clean+");
+					out.println(f.getName() + " http-client: make clean+");
 				else
-					err.println(f.getName() + " twecho: make clean-");
-				// end twecho make clean verification //
+					err.println(f.getName() + " http-client: make clean-");
+				// end http-client make clean verification //
 				
 				// Clean up
 				check.shutdown();
@@ -224,7 +231,7 @@ public class GraderMT
 				threads = Integer.parseInt(args[0]);
 		try {
 			/** The first argument is the folder with all the uni's. */
-			new GraderMT("dat", threads);
+			new GraderMT("lab6/lab6_grade", threads);
 		}
 		catch (Exception e) {
 			e.printStackTrace();
