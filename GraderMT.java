@@ -125,7 +125,7 @@ public class GraderMT
 					err.println(f.getName() + " mdb-lookup-server: make-");
 				// end mdb-lookup-server make verification //
 				
-				// isort verification //
+				// mdb-lookup-server verification //
 				/**
 				 * isin is a text file containing the sequence of inputs for the program. You don't
 				 * even have to enter anything for scanf() and the like, just type it into a file,
@@ -133,10 +133,11 @@ public class GraderMT
 				 * input line. If you want to run one program on the entire input file, use
 				 * Checks.bufferCommand (same signature and return)
 				 */
-				Thread.currentThread().getId();
+				// Choose a port number
+				String portNum = Long.toString(8880 + Thread.currentThread().getId());
 				boolean[] badMdb =
-				        check.mdbTest(mdbDir, "mdb-lookup-server ../../mdb-cs3157 888"
-				                + Thread.currentThread().getId(), mdbin);
+				        check.mdbTest(mdbDir, "mdb-lookup-server ../../mdb-cs3157 " + portNum,
+				                mdbin, portNum);
 				// are there memory errors?
 				if (badMdb[0])
 					err.println(f.getName() + " mdb-lookup-server: memory error-");

@@ -33,7 +33,7 @@ public class Checks
 	static Runtime	       runtime	   = Runtime.getRuntime();
 	
 	// The thread executor used for printing the stdout and stderr of the run commands
-	ExecutorService	       exec	       = Executors.newFixedThreadPool(3);
+	ExecutorService	       exec	       = Executors.newFixedThreadPool(2);
 	
 	// The stdout and stderr for this class
 	final PrintStream	   out;
@@ -476,7 +476,7 @@ public class Checks
 		err = new PrintStream(fileStream);
 	}
 	
-	public boolean[] mdbTest(File partDir, String commandName, File inputFile)
+	public boolean[] mdbTest(File partDir, String commandName, File inputFile, String portNum)
 	{
 		out.println("Command results:");
 		// Check to make sure the directory exists (i.e. they did this part)
@@ -527,17 +527,87 @@ public class Checks
 					stderr.close();
 				}
 			});
+			
+			// Make a file to hold the mdb server output
+			File mdbfile = new File(partDir.getParentFile(), "mdb.out.txt");
+			if (mdbfile.exists())
+				mdbfile.delete();
+			mdbfile.createNewFile();
+			
+			// Make streams for it
+			FileOutputStream mdbStream = new FileOutputStream(mdbfile);
+			final PrintStream mdbout = new PrintStream(mdbStream);
+			final PrintStream mdberr = new PrintStream(mdbStream);
+			
+			// For each line of input, make a new nc process
+			Scanner in = new Scanner(inputFile);
+			// Pause for a second
+			synchronized (partProc) {
+				partProc.wait(250);
+			}
+			while (in.hasNextLine()) {
+				String line = in.nextLine();
+				mdbout.println("nc for line \"" + line + "\":");
+				Process ncproc = runtime.exec("nc localhost " + portNum, null, partDir);
+				System.out.println("nc localhost " + portNum);
+				// Get the stdout and stderr of the process
+				final Scanner ncout = new Scanner(ncproc.getInputStream());
+				final Scanner ncerr = new Scanner(ncproc.getErrorStream());
+				// Make an executor to print the streams to file
+				ExecutorService mdbexec = Executors.newFixedThreadPool(2);
+				// Start printing them to file
+				mdbexec.execute(new Runnable() {
+					@Override
+					public void run()
+					{
+						while (ncout.hasNextLine()) {
+							mdberr.flush();
+							mdbout.println(ncout.nextLine());
+						}
+						ncout.close();
+					}
+				});
+				mdbexec.execute(new Runnable() {
+					@Override
+					public void run()
+					{
+						while (ncerr.hasNextLine()) {
+							mdbout.flush();
+							mdberr.println(ncerr.nextLine());
+						}
+						ncerr.close();
+					}
+				});
+				
+				// Get the stdin of the nc
+				PrintWriter mdbin = new PrintWriter(ncproc.getOutputStream());
+				// Print the line
+				mdbin.println(line);
+				mdbin.flush();
+				mdbin.close();
+				// Close the process
+				// wait for a bit for nc to get its stuff in
+				Thread.sleep(250);
+				ncproc.destroy();
+				// Shutdown the executor
+				mdbexec.shutdownNow();
+			}
+			in.close();
+			mdbout.close();
+			mdberr.close();
 			// Check the return of the valgrind process
 			success = partProc.waitFor();
 			out.println("Return code: " + success + "\n");
 		}
 		catch (IOException e) {
 			System.err.println("An error occured while trying to run: " + commandName);
+			e.printStackTrace();
 			return new boolean[] {true, true};
 		}
 		catch (InterruptedException e) {
 			System.err.println("Interrupted while waiting for process to complete.");
 			e.printStackTrace();
+			return new boolean[] {true, true};
 		}
 		// return code 126 for valgrind means it cannot find the file specified
 		if (success == 126)
