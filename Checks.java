@@ -4,6 +4,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.PrintWriter;
+import java.lang.reflect.Field;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Scanner;
@@ -534,68 +535,36 @@ public class Checks
 				mdbfile.delete();
 			mdbfile.createNewFile();
 			
-			// Make streams for it
-			FileOutputStream mdbStream = new FileOutputStream(mdbfile);
-			final PrintStream mdbout = new PrintStream(mdbStream);
-			final PrintStream mdberr = new PrintStream(mdbStream);
-			
 			// For each line of input, make a new nc process
 			Scanner in = new Scanner(inputFile);
 			// Pause for a second
-			synchronized (partProc) {
-				partProc.wait(250);
-			}
+			Thread.sleep(500);
+			
 			while (in.hasNextLine()) {
 				String line = in.nextLine();
-				mdbout.println("nc for line \"" + line + "\":");
-				Process ncproc = runtime.exec("nc localhost " + portNum, null, partDir);
-				System.out.println("nc localhost " + portNum);
-				// Get the stdout and stderr of the process
-				final Scanner ncout = new Scanner(ncproc.getInputStream());
-				final Scanner ncerr = new Scanner(ncproc.getErrorStream());
-				// Make an executor to print the streams to file
-				ExecutorService mdbexec = Executors.newFixedThreadPool(2);
-				// Start printing them to file
-				mdbexec.execute(new Runnable() {
-					@Override
-					public void run()
-					{
-						while (ncout.hasNextLine()) {
-							mdberr.flush();
-							mdbout.println(ncout.nextLine());
-						}
-						ncout.close();
-					}
-				});
-				mdbexec.execute(new Runnable() {
-					@Override
-					public void run()
-					{
-						while (ncerr.hasNextLine()) {
-							mdbout.flush();
-							mdberr.println(ncerr.nextLine());
-						}
-						ncerr.close();
-					}
-				});
+				// Write out the command to file
+				File ncfile = new File(partDir.getParentFile(), "nc.sh");
+				if (ncfile.exists())
+					ncfile.delete();
+				ncfile.createNewFile();
+				PrintWriter ncFileOut = new PrintWriter(ncfile);
+				ncFileOut.println("echo nc for phrase \\\"" + line + "\\\": >> mdb.out.txt");
+				ncFileOut.println("echo " + line + " | nc -q 5 localhost " + portNum
+				        + " >> mdb.out.txt && echo >> mdb.out.txt");
+				ncFileOut.flush();
+				ncFileOut.close();
 				
-				// Get the stdin of the nc
-				PrintWriter mdbin = new PrintWriter(ncproc.getOutputStream());
-				// Print the line
-				mdbin.println(line);
-				mdbin.flush();
-				mdbin.close();
+				Process ncproc = runtime.exec("bash nc.sh", null, partDir.getParentFile());
 				// Close the process
-				// wait for a bit for nc to get its stuff in
-				Thread.sleep(250);
-				ncproc.destroy();
-				// Shutdown the executor
-				mdbexec.shutdownNow();
+				ncproc.waitFor();
 			}
 			in.close();
-			mdbout.close();
-			mdberr.close();
 			// Check the return of the valgrind process
+			Field f = partProc.getClass().getDeclaredField("pid");
+			f.setAccessible(true);
+			// Kill the process
+			Process kill = runtime.exec("kill -2 " + f.get(partProc), null, partDir);
+			kill.waitFor();
 			success = partProc.waitFor();
 			out.println("Return code: " + success + "\n");
 		}
@@ -609,9 +578,157 @@ public class Checks
 			e.printStackTrace();
 			return new boolean[] {true, true};
 		}
+		catch (NoSuchFieldException e) {
+			e.printStackTrace();
+		}
+		catch (SecurityException e) {
+			e.printStackTrace();
+		}
+		catch (IllegalArgumentException e) {
+			e.printStackTrace();
+		}
+		catch (IllegalAccessException e) {
+			e.printStackTrace();
+		}
 		// return code 126 for valgrind means it cannot find the file specified
 		if (success == 126)
 			return new boolean[] {true, true};
 		return new boolean[] {memErr.get(), leakErr.get()};
+	}
+	
+	public boolean checkFileEquiv(File user, File base)
+	{
+		final AtomicBoolean equal = new AtomicBoolean(true);
+		// First, make sure the user's file exists
+		if (!user.isFile())
+			return false;
+		// Then, sanitize the user file
+		File script = sanitize(user);
+		script.delete();
+		// Then run diff, and print the result to file
+		String command = "diff '" + user.getAbsolutePath() + "' '" + base.getAbsolutePath() + "'";
+		try {
+			script.createNewFile();
+			PrintStream diffWriter = new PrintStream(script);
+			diffWriter.println(command);
+			diffWriter.flush();
+			diffWriter.close();
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+			return false;
+		}
+		try {
+			Process diffExec = runtime.exec("bash san.sh", null, user.getParentFile());
+			final Scanner stdout = new Scanner(diffExec.getInputStream());
+			final Scanner stderr = new Scanner(diffExec.getErrorStream());
+			// Print the stdout of this process
+			out.println("diff on " + user.getName() + ":");
+			exec.execute(new Runnable() {
+				@Override
+				public void run()
+				{
+					// If anything prints here, then they aren't the same
+					while (stdout.hasNextLine()) {
+						err.flush();
+						out.println(stdout.nextLine());
+						equal.set(false);
+					}
+					stdout.close();
+				}
+			});
+			// Print the stderr of this process
+			exec.execute(new Runnable() {
+				@Override
+				public void run()
+				{
+					while (stderr.hasNextLine()) {
+						out.flush();
+						err.println(stderr.nextLine());
+						equal.set(false);
+					}
+					stderr.close();
+				}
+			});
+			
+			// Wait for it to finish
+			diffExec.waitFor();
+			out.println();
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+			return false;
+		}
+		catch (InterruptedException e) {
+			e.printStackTrace();
+			return false;
+		}
+		script.delete();
+		return equal.get();
+	}
+	
+	private File sanitize(File user)
+	{
+		// Write the bash script to sanitize the file
+		File bash = new File(user.getParent(), "san.sh");
+		if (bash.isFile())
+			bash.delete();
+		PrintStream bashWriter = null;
+		try {
+			bash.createNewFile();
+			bashWriter = new PrintStream(bash);
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+		}
+		// Write the script to file
+		bashWriter.println("sed '/^[[:space:]]*$/{:a;$d;N;/\\n[[:space:]]*$/ba}' " + user.getName()
+		        + " > " + user.getName() + ".2");
+		bashWriter.println("mv " + user.getName() + ".2 " + user.getName());
+		bashWriter.flush();
+		bashWriter.close();
+		
+		// Execute the script
+		try {
+			Process bashExec = runtime.exec("bash san.sh", null, user.getParentFile());
+			final Scanner stdout = new Scanner(bashExec.getInputStream());
+			final Scanner stderr = new Scanner(bashExec.getErrorStream());
+			// Print the stdout of this process
+			exec.execute(new Runnable() {
+				@Override
+				public void run()
+				{
+					while (stdout.hasNextLine()) {
+						System.err.flush();
+						System.out.println(stdout.nextLine());
+					}
+					stdout.close();
+				}
+			});
+			// Print the stderr of this process
+			exec.execute(new Runnable() {
+				@Override
+				public void run()
+				{
+					while (stderr.hasNextLine()) {
+						System.out.flush();
+						System.err.println(stderr.nextLine());
+					}
+					stderr.close();
+				}
+			});
+			
+			// Wait for it to finish
+			bashExec.waitFor();
+		}
+		catch (IOException e) {
+			e.printStackTrace();
+		}
+		catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		
+		// We're done
+		return bash;
 	}
 }

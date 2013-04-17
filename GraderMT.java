@@ -22,7 +22,7 @@ public class GraderMT
 		File rootDir = new File(root);
 		ConcurrentLinkedQueue<File> uniDirs = new ConcurrentLinkedQueue<File>();
 		for (File f : rootDir.listFiles())
-			if (f.isDirectory() && !f.getName().startsWith(".") && f.getName().equals("eo2309"))
+			if (f.isDirectory() && !f.getName().startsWith(".") && !f.getName().startsWith("lab"))
 				uniDirs.add(f);
 		// Then, spawn the requested number of threads
 		Thread[] workers = new Thread[threads];
@@ -208,6 +208,20 @@ public class GraderMT
 				else
 					out.println(f.getName() + " http-client: leak error+");
 				// end http-client verification //
+				
+				// Check to make sure that the two html files were produced and exist
+				boolean[] goodHTMLFiles = new boolean[2];
+				goodHTMLFiles[0] =
+				        check.checkFileEquiv(new File(hcDir, "jam.htm"), new File(
+				                "lab6/sol/solutions/jam.htm"));
+				goodHTMLFiles[1] =
+				        check.checkFileEquiv(new File(hcDir, "make.html"), new File(
+				                "lab6/sol/solutions/make.html"));
+				if (goodHTMLFiles[0] && goodHTMLFiles[1])
+					out.println(f.getName() + " http-client: same file+");
+				else
+					err.println(f.getName() + " http-client: same file-");
+				// end html file equivalence verification //
 				
 				// http-client make clean verification //
 				/** Self explanatory */
