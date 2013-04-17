@@ -8,6 +8,8 @@ import java.lang.reflect.Field;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Scanner;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -538,8 +540,10 @@ public class Checks
 			// For each line of input, make a new nc process
 			Scanner in = new Scanner(inputFile);
 			// Pause for a second
-			Thread.sleep(500);
+			Thread.sleep(1000);
 			
+			// Each netcat has 10 seconds to complete, at which point we kill the mdb-lookup-server
+			// which should free up the netcat
 			while (in.hasNextLine()) {
 				String line = in.nextLine();
 				// Write out the command to file
@@ -555,8 +559,34 @@ public class Checks
 				ncFileOut.close();
 				
 				Process ncproc = runtime.exec("bash nc.sh", null, partDir.getParentFile());
+				// Mark this current thread in case it needs to be interrupted
+				final Thread ncWait = Thread.currentThread();
 				// Close the process
-				ncproc.waitFor();
+				try {
+					Timer t = new Timer();
+					t.schedule(new TimerTask() {
+						@Override
+						public void run()
+						{
+							ncWait.interrupt();
+						}
+					}, 10 * 1000);
+					ncproc.waitFor();
+					// If we reach this point, then we don't need to interrupt
+					t.cancel();
+				}
+				catch (InterruptedException e) {
+					in.close();
+					// Check the return of the valgrind process
+					Field f = partProc.getClass().getDeclaredField("pid");
+					f.setAccessible(true);
+					// Kill the process
+					Process kill = runtime.exec("kill -2 " + f.get(partProc), null, partDir);
+					kill.waitFor();
+					success = partProc.waitFor();
+					out.println("Return code: " + success + "\n");
+					return new boolean[] {true, true};
+				}
 			}
 			in.close();
 			// Check the return of the valgrind process
