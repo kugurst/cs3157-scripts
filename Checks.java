@@ -390,7 +390,8 @@ public class Checks
 				out.println("Return code: " + success + "\n");
 			}
 			catch (IOException e) {
-				System.err.println("An error occured while trying to run: " + commandName);
+				System.err.println(Thread.currentThread()
+				        + "An error occured while trying to run: " + commandName);
 				currProc = null;
 				return new boolean[] {true, true};
 			}
@@ -626,58 +627,57 @@ public class Checks
 				return new boolean[] {true, true};
 			}
 			
-			// Each netcat has 5 seconds to complete, at which point we kill the mdb-lookup-server
+			// Each netcat has 15 seconds to complete, at which point we kill the mdb-lookup-server
 			// which should free up the netcat
+			// make the command file
+			File ncfile = new File(partDir.getParentFile(), "nc.sh");
+			if (ncfile.exists())
+				ncfile.delete();
+			ncfile.createNewFile();
+			PrintStream ncFileOut = new PrintStream(ncfile);
 			System.out.println(Thread.currentThread() + ": Running nc on mdb-lookup-server");
 			while (in.hasNextLine()) {
 				String line = in.nextLine();
 				// Write out the command to file
-				File ncfile = new File(partDir.getParentFile(), "nc.sh");
-				if (ncfile.exists())
-					ncfile.delete();
-				ncfile.createNewFile();
-				PrintStream ncFileOut = new PrintStream(ncfile);
 				ncFileOut.println("echo nc for phrase \\\"" + line + "\\\": >> mdb.out.txt");
 				ncFileOut.println("echo " + line + " | nc -q 5 localhost " + portNum
 				        + " >> mdb.out.txt && echo >> mdb.out.txt");
-				ncFileOut.flush();
-				ncFileOut.close();
-				
-				Process ncproc = runtime.exec("bash nc.sh", null, partDir.getParentFile());
-				// Gobble this process's streams, as bash should output the nc stuff to file
-				new StreamGobbler(ncproc.getErrorStream());
-				new StreamGobbler(ncproc.getInputStream());
-				final AtomicBoolean killed = new AtomicBoolean(false);
-				final Thread ncWait = Thread.currentThread();
-				// Close the process
-				try {
-					TimerTask tt = new TimerTask() {
-						@Override
-						public void run()
-						{
-							killProcess(fPartDir);
-							System.err.println(ncWait + ": killed mdb-lookup-server");
-							out.println("mdb-lookup-server took more than 5 seconds to send a response.");
-							out.flush();
-							killed.set(true);
-						}
-					};
-					t.schedule(tt, 5 * 1000);
-					ncproc.waitFor();
-					// If we reach this point, then we don't need to interrupt
-					if (!killed.get())
-						tt.cancel();
-					else
-						break;
-				}
-				catch (InterruptedException e) {
-					in.close();
-					killProcess(partDir);
-					success = partProc.waitFor();
-					out.println("Return code: " + success + "\n");
-					e.printStackTrace();
-					return new boolean[] {true, true};
-				}
+			}
+			ncFileOut.flush();
+			ncFileOut.close();
+			
+			Process ncproc = runtime.exec("bash nc.sh", null, partDir.getParentFile());
+			// Gobble this process's streams, as bash should output the nc stuff to file
+			new StreamGobbler(ncproc.getErrorStream());
+			new StreamGobbler(ncproc.getInputStream());
+			final AtomicBoolean killed = new AtomicBoolean(false);
+			final Thread ncWait = Thread.currentThread();
+			// Close the process
+			try {
+				TimerTask tt = new TimerTask() {
+					@Override
+					public void run()
+					{
+						killProcess(fPartDir);
+						System.err.println(ncWait + ": killed mdb-lookup-server");
+						out.println("mdb-lookup-server took more than 5 seconds to send a response.");
+						out.flush();
+						killed.set(true);
+					}
+				};
+				t.schedule(tt, 15 * 1000);
+				ncproc.waitFor();
+				// If we reach this point, then we don't need to interrupt
+				if (!killed.get())
+					tt.cancel();
+			}
+			catch (InterruptedException e) {
+				in.close();
+				killProcess(partDir);
+				success = partProc.waitFor();
+				out.println("Return code: " + success + "\n");
+				e.printStackTrace();
+				return new boolean[] {true, true};
 			}
 			in.close();
 			killProcess(partDir);
