@@ -5,19 +5,20 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.lang.reflect.Field;
+import java.net.DatagramSocket;
+import java.net.ServerSocket;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Scanner;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Checks
 {
 	// Making a HashSet<String> to hold all bad commits:
-	static HashSet<String>	badCommits	= new HashSet<String>();
+	static HashSet<String>	      badCommits	= new HashSet<String>();
 	static {
 		badCommits.add("first");
 		badCommits.add("second");
@@ -33,14 +34,19 @@ public class Checks
 	}
 	
 	// The runtime for executing commands
-	static Runtime	       runtime	   = Runtime.getRuntime();
+	static Runtime	              runtime	 = Runtime.getRuntime();
 	
 	// The thread executor used for printing the stdout and stderr of the run commands
-	ExecutorService	       exec	       = Executors.newFixedThreadPool(2);
+	public static ExecutorService	exec;
 	
 	// The stdout and stderr for this class
-	final PrintStream	   out;
-	final PrintStream	   err;
+	final PrintStream	          out;
+	final PrintStream	          err;
+	
+	// A field to contain the current process to be tested that is running.
+	Process	                      currProc;
+	// A timer to be used to cut down on thread creation
+	private static Timer	      t	         = new Timer(true);
 	
 	public boolean checkMakeClean(File partDir, String makeName)
 	{
@@ -198,13 +204,14 @@ public class Checks
 	 * @param inputFile
 	 * @return <code>{memory error, leak error}</code>
 	 */
-	public boolean[] testCommand(File partDir, String commandName, File inputFile)
+	public boolean[] testCommand(File partDir, final String commandName, File inputFile, int limit)
 	{
 		out.println("Command results:");
 		// Check to make sure the directory exists (i.e. they did this part)
 		if (partDir == null)
 			return new boolean[] {true, true};
 		
+		final File fPartDir = partDir;
 		// Open up the input file for reading, if it exists
 		// Valgrind error booleans
 		final AtomicBoolean memErr = new AtomicBoolean(true);
@@ -219,6 +226,9 @@ public class Checks
 					Process partProc =
 					        runtime.exec("valgrind --leak-check=yes ./" + commandName, null,
 					                partDir);
+					System.out.println(Thread.currentThread() + ": started "
+					        + commandName.split("\\ ")[0]);
+					currProc = partProc;
 					final Scanner stdout = new Scanner(partProc.getInputStream());
 					final Scanner stderr = new Scanner(partProc.getErrorStream());
 					// Print the stdout of this process
@@ -259,7 +269,33 @@ public class Checks
 					stdin.println(line);
 					stdin.flush();
 					stdin.close();
-					success = partProc.waitFor();
+					// This process is limited to the given number of seconds
+					final Thread waiting = Thread.currentThread();
+					if (limit > 0) {
+						TimerTask tt = new TimerTask() {
+							@Override
+							public void run()
+							{
+								killProcess(fPartDir);
+								System.err.println(waiting + ": killed "
+								        + commandName.split("\\ ")[0]);
+								out.println("Killed " + commandName.split("\\ ")[0]
+								        + ". Rerun to see if it behaves itself.");
+								out.flush();
+							}
+						};
+						t.schedule(tt, limit * 1000);
+						System.out.println(Thread.currentThread() + ": timed waiting on "
+						        + commandName.split("\\ ")[0]);
+						success = partProc.waitFor();
+						// We no longer need to kill that process.
+						tt.cancel();
+					}
+					else {
+						System.out.println(Thread.currentThread() + ": waiting on "
+						        + commandName.split("\\ ")[0]);
+						success = partProc.waitFor();
+					}
 					out.println("Return code: " + success + "\n");
 				}
 				in.close();
@@ -267,10 +303,12 @@ public class Checks
 			catch (FileNotFoundException e) {
 				System.err.println(inputFile.getPath() + " does not exist.");
 				e.printStackTrace();
+				currProc = null;
 				return new boolean[] {true, true};
 			}
 			catch (IOException e) {
 				System.err.println("Could not run the specified command.");
+				currProc = null;
 				return new boolean[] {true, true};
 			}
 			catch (InterruptedException e) {
@@ -284,6 +322,9 @@ public class Checks
 				out.println("Testing " + commandName);
 				Process partProc =
 				        runtime.exec("valgrind --leak-check=yes ./" + commandName, null, partDir);
+				System.out.println(Thread.currentThread() + ": started "
+				        + commandName.split("\\ ")[0]);
+				currProc = partProc;
 				final Scanner stdout = new Scanner(partProc.getInputStream());
 				final Scanner stderr = new Scanner(partProc.getErrorStream());
 				// Print the stdout of this process
@@ -320,11 +361,37 @@ public class Checks
 					}
 				});
 				// Check the return of the valgrind process
-				success = partProc.waitFor();
+				// This process is limited to the given number of seconds
+				final Thread waiting = Thread.currentThread();
+				if (limit > 0) {
+					TimerTask tt = new TimerTask() {
+						@Override
+						public void run()
+						{
+							killProcess(fPartDir);
+							System.err.println(waiting + ": killed " + commandName.split("\\ ")[0]);
+							out.println("Killed " + commandName.split("\\ ")[0]
+							        + ". Rerun to see if it behaves itself.");
+							out.flush();
+						}
+					};
+					t.schedule(tt, limit * 1000);
+					System.out.println(Thread.currentThread() + ": timed waiting on "
+					        + commandName.split("\\ ")[0]);
+					success = partProc.waitFor();
+					// We no longer need to kill that process.
+					tt.cancel();
+				}
+				else {
+					System.out.println(Thread.currentThread() + ": waiting on "
+					        + commandName.split("\\ ")[0]);
+					success = partProc.waitFor();
+				}
 				out.println("Return code: " + success + "\n");
 			}
 			catch (IOException e) {
 				System.err.println("An error occured while trying to run: " + commandName);
+				currProc = null;
 				return new boolean[] {true, true};
 			}
 			catch (InterruptedException e) {
@@ -332,6 +399,7 @@ public class Checks
 				e.printStackTrace();
 			}
 		}
+		currProc = null;
 		// return code 126 for valgrind means it cannot find the file specified
 		if (success == 126)
 			return new boolean[] {true, true};
@@ -411,7 +479,6 @@ public class Checks
 	{
 		out.flush();
 		err.flush();
-		exec.shutdownNow();
 		out.close(); // The underlying stream is closed, so err is closed by our concern.
 	}
 	
@@ -485,7 +552,7 @@ public class Checks
 		// Check to make sure the directory exists (i.e. they did this part)
 		if (partDir == null)
 			return new boolean[] {true, true};
-		
+		final File fPartDir = partDir;
 		// Open up the input file for reading, if it exists
 		// Valgrind error booleans
 		final AtomicBoolean memErr = new AtomicBoolean(true);
@@ -495,6 +562,8 @@ public class Checks
 			out.println("Testing " + commandName);
 			Process partProc =
 			        runtime.exec("valgrind --leak-check=yes ./" + commandName, null, partDir);
+			System.out.println(Thread.currentThread() + ": started mdb-lookup-server");
+			currProc = partProc;
 			final Scanner stdout = new Scanner(partProc.getInputStream());
 			final Scanner stderr = new Scanner(partProc.getErrorStream());
 			// Print the stdout of this process
@@ -539,11 +608,27 @@ public class Checks
 			
 			// For each line of input, make a new nc process
 			Scanner in = new Scanner(inputFile);
-			// Pause for a second
-			Thread.sleep(1000);
+			// Pause until the socket is no longer available
+			System.out.println(Thread.currentThread() + ": Checking for port " + portNum);
+			int count = 0;
+			while (available(Integer.parseInt(portNum)) && count < 2000) {
+				count++;
+				Thread.sleep(25);
+			}
+			// mdb-lookup-server never took the port
+			if (!(count < 2000)) {
+				killProcess(fPartDir);
+				System.err.println(Thread.currentThread() + ": port not bound");
+				out.println("mdb-lookup-server port was never bound!\n"
+				        + "Rerun to see memory memory errors and heap summary.");
+				out.flush();
+				in.close();
+				return new boolean[] {true, true};
+			}
 			
-			// Each netcat has 10 seconds to complete, at which point we kill the mdb-lookup-server
+			// Each netcat has 5 seconds to complete, at which point we kill the mdb-lookup-server
 			// which should free up the netcat
+			System.out.println(Thread.currentThread() + ": Running nc on mdb-lookup-server");
 			while (in.hasNextLine()) {
 				String line = in.nextLine();
 				// Write out the command to file
@@ -551,7 +636,7 @@ public class Checks
 				if (ncfile.exists())
 					ncfile.delete();
 				ncfile.createNewFile();
-				PrintWriter ncFileOut = new PrintWriter(ncfile);
+				PrintStream ncFileOut = new PrintStream(ncfile);
 				ncFileOut.println("echo nc for phrase \\\"" + line + "\\\": >> mdb.out.txt");
 				ncFileOut.println("echo " + line + " | nc -q 5 localhost " + portNum
 				        + " >> mdb.out.txt && echo >> mdb.out.txt");
@@ -559,54 +644,74 @@ public class Checks
 				ncFileOut.close();
 				
 				Process ncproc = runtime.exec("bash nc.sh", null, partDir.getParentFile());
-				// Mark this current thread in case it needs to be interrupted
+				// Gobble this process's streams, as bash should output the nc stuff to file
+				new StreamGobbler(ncproc.getErrorStream());
+				new StreamGobbler(ncproc.getInputStream());
+				final AtomicBoolean killed = new AtomicBoolean(false);
 				final Thread ncWait = Thread.currentThread();
 				// Close the process
 				try {
-					Timer t = new Timer();
-					t.schedule(new TimerTask() {
+					TimerTask tt = new TimerTask() {
 						@Override
 						public void run()
 						{
-							ncWait.interrupt();
+							killProcess(fPartDir);
+							System.err.println(ncWait + ": killed mdb-lookup-server");
+							out.println("mdb-lookup-server took more than 5 seconds to send a response.");
+							out.flush();
+							killed.set(true);
 						}
-					}, 10 * 1000);
+					};
+					t.schedule(tt, 5 * 1000);
 					ncproc.waitFor();
 					// If we reach this point, then we don't need to interrupt
-					t.cancel();
+					if (!killed.get())
+						tt.cancel();
+					else
+						break;
 				}
 				catch (InterruptedException e) {
 					in.close();
-					// Check the return of the valgrind process
-					Field f = partProc.getClass().getDeclaredField("pid");
-					f.setAccessible(true);
-					// Kill the process
-					Process kill = runtime.exec("kill -2 " + f.get(partProc), null, partDir);
-					kill.waitFor();
+					killProcess(partDir);
 					success = partProc.waitFor();
 					out.println("Return code: " + success + "\n");
+					e.printStackTrace();
 					return new boolean[] {true, true};
 				}
 			}
 			in.close();
-			// Check the return of the valgrind process
-			Field f = partProc.getClass().getDeclaredField("pid");
-			f.setAccessible(true);
-			// Kill the process
-			Process kill = runtime.exec("kill -2 " + f.get(partProc), null, partDir);
-			kill.waitFor();
+			killProcess(partDir);
 			success = partProc.waitFor();
 			out.println("Return code: " + success + "\n");
 		}
 		catch (IOException e) {
 			System.err.println("An error occured while trying to run: " + commandName);
+			killProcess(partDir);
 			e.printStackTrace();
 			return new boolean[] {true, true};
 		}
 		catch (InterruptedException e) {
 			System.err.println("Interrupted while waiting for process to complete.");
+			killProcess(partDir);
 			e.printStackTrace();
 			return new boolean[] {true, true};
+		}
+		// return code 126 for valgrind means it cannot find the file specified
+		currProc = null;
+		if (success == 126)
+			return new boolean[] {true, true};
+		return new boolean[] {memErr.get(), leakErr.get()};
+	}
+	
+	private void killProcess(File procDir)
+	{
+		try {
+			// Get the PID of the process
+			Field f = currProc.getClass().getDeclaredField("pid");
+			f.setAccessible(true);
+			// Kill the process
+			Process kill = runtime.exec("kill -2 " + f.get(currProc), null, procDir);
+			kill.waitFor();
 		}
 		catch (NoSuchFieldException e) {
 			e.printStackTrace();
@@ -620,10 +725,12 @@ public class Checks
 		catch (IllegalAccessException e) {
 			e.printStackTrace();
 		}
-		// return code 126 for valgrind means it cannot find the file specified
-		if (success == 126)
-			return new boolean[] {true, true};
-		return new boolean[] {memErr.get(), leakErr.get()};
+		catch (IOException e) {
+			e.printStackTrace();
+		}
+		catch (InterruptedException e) {
+			e.printStackTrace();
+		}
 	}
 	
 	public boolean checkFileEquiv(File user, File base)
@@ -760,5 +867,39 @@ public class Checks
 		
 		// We're done
 		return bash;
+	}
+	
+	public static boolean available(int port)
+	{
+		if (port < 1 || port > 65535) {
+			throw new IllegalArgumentException("Invalid start port: " + port);
+		}
+		
+		ServerSocket ss = null;
+		DatagramSocket ds = null;
+		try {
+			ss = new ServerSocket(port);
+			ss.setReuseAddress(true);
+			ds = new DatagramSocket(port);
+			ds.setReuseAddress(true);
+			return true;
+		}
+		catch (IOException e) {}
+		finally {
+			if (ds != null) {
+				ds.close();
+			}
+			
+			if (ss != null) {
+				try {
+					ss.close();
+				}
+				catch (IOException e) {
+					/* should not be thrown */
+				}
+			}
+		}
+		
+		return false;
 	}
 }

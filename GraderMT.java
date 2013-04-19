@@ -4,6 +4,8 @@ import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class GraderMT
 {
@@ -12,12 +14,14 @@ public class GraderMT
 	 * This input file contains the array sizes I use for testing isort. Change it to whatever you
 	 * named yours, or add more
 	 */
-	File	  mdbin	   = new File("src/mdb.in");
-	GitFilter	filter	= new GitFilter();
+	File	      mdbin	    = new File("src/mdb.in");
+	GitFilter	  filter	= new GitFilter();
+	AtomicInteger	counter	= new AtomicInteger(0);
 	
 	/** This constructor isn't all that interesting */
 	public GraderMT(String root, int threads)
 	{
+		Checks.exec = Executors.newFixedThreadPool(2 * threads + 1);
 		// We'll be single threaded to populate our list with all folders to check.
 		File rootDir = new File(root);
 		ConcurrentLinkedQueue<File> uniDirs = new ConcurrentLinkedQueue<File>();
@@ -39,6 +43,7 @@ public class GraderMT
 				e.printStackTrace();
 			}
 		// That's it
+		Checks.exec.shutdown();
 	}
 	
 	/** Edit me for success */
@@ -133,8 +138,14 @@ public class GraderMT
 				 * input line. If you want to run one program on the entire input file, use
 				 * Checks.bufferCommand (same signature and return)
 				 */
-				// Choose a port number
-				String portNum = Long.toString(8880 + Thread.currentThread().getId());
+				// Choose an open port number
+				System.out.println(Thread.currentThread() + ": testing mdb-lookup-server");
+				String portNum = "";
+				do {
+					portNum = Integer.toString(8888 + counter.getAndAdd(1));
+				}
+				while (!Checks.available(Integer.parseInt(portNum)));
+				System.out.println(Thread.currentThread() + ": port " + portNum + " is available");
 				boolean[] badMdb =
 				        check.mdbTest(mdbDir, "mdb-lookup-server ../../mdb-cs3157 " + portNum,
 				                mdbin, portNum);
@@ -182,15 +193,18 @@ public class GraderMT
 				 * (that is, if one run had leak errors, then this part gets docked for leak errors)
 				 */
 				boolean[][] twechoSuccess = new boolean[3][2];
+				System.out.println(Thread.currentThread() + ": testing http-client");
 				twechoSuccess[0] =
 				        check.testCommand(hcDir,
-				                "http-client www2.warnerbros.com 80 /spacejam/movie/jam.htm", null);
+				                "http-client www2.warnerbros.com 80 /spacejam/movie/jam.htm", null,
+				                10);
 				twechoSuccess[1] =
 				        check.testCommand(hcDir,
-				                "http-client www.gnu.org 80 /software/make/manual/make.html", null);
+				                "http-client www.gnu.org 80 /software/make/manual/make.html", null,
+				                10);
 				twechoSuccess[2] =
 				        check.testCommand(hcDir, "http-client www.cplusplus.com 80 /index.html",
-				                null);
+				                null, 10);
 				boolean memErr = false;
 				boolean leakErr = false;
 				for (boolean[] errSum : twechoSuccess) {
@@ -234,6 +248,8 @@ public class GraderMT
 				
 				// Clean up
 				check.shutdown();
+				// Done
+				System.out.println(Thread.currentThread() + ": done.");
 			}
 		}
 	}
