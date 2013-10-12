@@ -1,7 +1,9 @@
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.lang.reflect.Field;
@@ -17,21 +19,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Checks
 {
+	// The worker number of the instantiating GradeWorker to be used for retrieving the correct
+	// timer.
+	int	                          number;
+	
 	// Making a HashSet<String> to hold all bad commits:
 	static HashSet<String>	      badCommits	= new HashSet<String>();
-	static {
-		badCommits.add("first");
-		badCommits.add("second");
-		badCommits.add("third");
-		badCommits.add("fourth");
-		badCommits.add("fifth");
-		badCommits.add("sixth");
-		badCommits.add("seventh");
-		badCommits.add("eighth");
-		badCommits.add("ninth");
-		badCommits.add("tenth");
-		badCommits.add("eleventh");
-	}
 	
 	// The runtime for executing commands
 	static Runtime	              runtime	 = Runtime.getRuntime();
@@ -40,51 +33,73 @@ public class Checks
 	public static ExecutorService	exec;
 	
 	// The stdout and stderr for this class
-	final PrintStream	          out;
-	final PrintStream	          err;
+	final PrintWriter	          out;
+	final PrintWriter	          err;
+	
+	// The header and the footer to denote System errors that occur (and may or may not be due to
+	// the student)
+	static String	              header	 = "==========ERROR==========\n";
+	static String	              footer	 = "=========================";
 	
 	// A field to contain the current process to be tested that is running.
 	Process	                      currProc;
 	// A timer to be used to cut down on thread creation
-	private static Timer	      t	         = new Timer(true);
+	public static Timer	          tmArr[];
 	
 	public boolean checkMakeClean(File partDir, String makeName)
 	{
 		out.println("Checking make clean:");
-		// Holding the return value. We still need to clean up the directory
+		// Holding the return value. We still need to clean up the directory (so we can't return
+		// directly)
 		boolean cleanWorked = true;
-		// Checking to make sure they did part 1.
-		if (partDir == null || partDir.listFiles() == null)
+		// Checking to make sure there are files and a directory to clean up.
+		if (partDir == null || !partDir.isDirectory() || partDir.listFiles().length == 0)
 			return false;
-		final AtomicBoolean makeErr = new AtomicBoolean(false);
 		// Run make clean in the current directory.
 		try {
 			Process makeClean = runtime.exec("make clean", null, partDir);
-			final Scanner stdout = new Scanner(makeClean.getInputStream());
-			final Scanner stderr = new Scanner(makeClean.getErrorStream());
+			final BufferedReader stdout =
+			        new BufferedReader(new InputStreamReader(makeClean.getInputStream()),
+			                2 * (1024 ^ 2));
+			final BufferedReader stderr =
+			        new BufferedReader(new InputStreamReader(makeClean.getErrorStream()),
+			                2 * (1024 ^ 2));
 			// Print the stdout of this process
 			exec.execute(new Runnable() {
 				@Override
 				public void run()
 				{
-					while (stdout.hasNextLine()) {
-						err.flush();
-						out.println(stdout.nextLine());
+					String line;
+					try {
+						while ((line = stdout.readLine()) != null) {
+							out.println("\t" + line);
+						}
+						stdout.close();
 					}
-					stdout.close();
+					catch (IOException e) {
+						System.err.println(header + Thread.currentThread() + ":");
+						e.printStackTrace();
+						System.err.println(footer);
+					}
 				}
 			});
-			// If there's anything here, then an error occurred and it did not clean correctly
+			// Print the stderr of this process
 			exec.execute(new Runnable() {
 				@Override
 				public void run()
 				{
-					while (stderr.hasNextLine()) {
-						makeErr.set(true);
-						out.flush();
-						err.println(stderr.nextLine());
+					String line;
+					try {
+						while ((line = stderr.readLine()) != null) {
+							err.println("\t" + line);
+						}
+						stderr.close();
 					}
-					stderr.close();
+					catch (IOException e) {
+						System.err.print(header + Thread.currentThread() + ":");
+						e.printStackTrace();
+						System.err.println(footer);
+					}
 				}
 			});
 			// Wait for the command to finish
@@ -93,11 +108,13 @@ public class Checks
 				cleanWorked = false;
 		}
 		catch (IOException e) {
-			System.err.println("Unable to run make clean in directory: " + partDir);
+			System.err.println(Thread.currentThread() + ": Unable to run make clean in directory: "
+			        + partDir);
 			e.printStackTrace();
 		}
 		catch (InterruptedException e) {
-			System.err.println("Interrupted while waiting for make clean to finish.");
+			System.err.println(Thread.currentThread()
+			        + ": Interrupted while waiting for make clean to finish.");
 			e.printStackTrace();
 		}
 		// Checking to make sure that make clean removed everything it should
@@ -108,10 +125,7 @@ public class Checks
 				f.delete();
 				cleanWorked = false;
 			}
-		err.flush();
 		out.println();
-		if (makeErr.get())
-			return false;
 		return cleanWorked;
 	}
 	
@@ -139,7 +153,6 @@ public class Checks
 				public void run()
 				{
 					while (stdout.hasNextLine()) {
-						err.flush();
 						out.println(stdout.nextLine());
 					}
 					stdout.close();
@@ -160,7 +173,6 @@ public class Checks
 							memErr.set(false);
 						if (line.contains("LEAK SUMMARY:"))
 							leakErr.set(true);
-						out.flush();
 						err.println(line);
 					}
 					stderr.close();
@@ -237,7 +249,6 @@ public class Checks
 						public void run()
 						{
 							while (stdout.hasNextLine()) {
-								err.flush();
 								out.println(stdout.nextLine());
 							}
 							stdout.close();
@@ -258,7 +269,6 @@ public class Checks
 									memErr.set(false);
 								if (line.contains("LEAK SUMMARY:"))
 									leakErr.set(true);
-								out.flush();
 								err.println(line);
 							}
 							stderr.close();
@@ -281,10 +291,9 @@ public class Checks
 								        + commandName.split("\\ ")[0]);
 								out.println("Killed " + commandName.split("\\ ")[0]
 								        + ". Rerun to see if it behaves itself.");
-								out.flush();
 							}
 						};
-						t.schedule(tt, limit * 1000);
+						tmArr[number].schedule(tt, limit * 1000);
 						System.out.println(Thread.currentThread() + ": timed waiting on "
 						        + commandName.split("\\ ")[0]);
 						success = partProc.waitFor();
@@ -333,7 +342,6 @@ public class Checks
 					public void run()
 					{
 						while (stdout.hasNextLine()) {
-							err.flush();
 							out.println(stdout.nextLine());
 						}
 						stdout.close();
@@ -354,7 +362,6 @@ public class Checks
 								memErr.set(false);
 							if (line.contains("LEAK SUMMARY:"))
 								leakErr.set(true);
-							out.flush();
 							err.println(line);
 						}
 						stderr.close();
@@ -372,10 +379,9 @@ public class Checks
 							System.err.println(waiting + ": killed " + commandName.split("\\ ")[0]);
 							out.println("Killed " + commandName.split("\\ ")[0]
 							        + ". Rerun to see if it behaves itself.");
-							out.flush();
 						}
 					};
-					t.schedule(tt, limit * 1000);
+					tmArr[number].schedule(tt, limit * 1000);
 					System.out.println(Thread.currentThread() + ": timed waiting on "
 					        + commandName.split("\\ ")[0]);
 					success = partProc.waitFor();
@@ -424,7 +430,6 @@ public class Checks
 				public void run()
 				{
 					while (stdout.hasNextLine()) {
-						err.flush();
 						out.println(stdout.nextLine());
 					}
 					stdout.close();
@@ -442,7 +447,6 @@ public class Checks
 						if (line.trim().isEmpty())
 							continue;
 						makeErr.set(true);
-						out.flush();
 						err.println(line);
 					}
 					stderr.close();
@@ -534,17 +538,13 @@ public class Checks
 			err.print(message);
 	}
 	
-	public Checks(File target)
+	public Checks(File target, int number) throws FileNotFoundException
 	{
 		FileOutputStream fileStream = null;
-		try {
-			fileStream = new FileOutputStream(target);
-		}
-		catch (FileNotFoundException e) {
-			e.printStackTrace();
-		}
-		out = new PrintStream(fileStream);
-		err = new PrintStream(fileStream);
+		fileStream = new FileOutputStream(target);
+		this.number = number;
+		out = new PrintWriter(fileStream, true);
+		err = new PrintWriter(fileStream, true);
 	}
 	
 	public boolean[] mdbTest(File partDir, String commandName, File inputFile, String portNum)
@@ -573,7 +573,6 @@ public class Checks
 				public void run()
 				{
 					while (stdout.hasNextLine()) {
-						err.flush();
 						out.println(stdout.nextLine());
 					}
 					stdout.close();
@@ -594,7 +593,6 @@ public class Checks
 							memErr.set(false);
 						if (line.contains("LEAK SUMMARY:"))
 							leakErr.set(true);
-						out.flush();
 						err.println(line);
 					}
 					stderr.close();
@@ -622,7 +620,6 @@ public class Checks
 				System.err.println(Thread.currentThread() + ": port not bound");
 				out.println("mdb-lookup-server port was never bound!\n"
 				        + "Rerun to see memory memory errors and heap summary.");
-				out.flush();
 				in.close();
 				return new boolean[] {true, true};
 			}
@@ -661,11 +658,10 @@ public class Checks
 						killProcess(fPartDir);
 						System.err.println(ncWait + ": killed mdb-lookup-server");
 						out.println("mdb-lookup-server took more than 5 seconds to send a response.");
-						out.flush();
 						killed.set(true);
 					}
 				};
-				t.schedule(tt, 15 * 1000);
+				tmArr[number].schedule(tt, 15 * 1000);
 				ncproc.waitFor();
 				// If we reach this point, then we don't need to interrupt
 				if (!killed.get())
@@ -767,7 +763,6 @@ public class Checks
 				{
 					// If anything prints here, then they aren't the same
 					while (stdout.hasNextLine()) {
-						err.flush();
 						out.println(stdout.nextLine());
 						equal.set(false);
 					}
@@ -780,7 +775,6 @@ public class Checks
 				public void run()
 				{
 					while (stderr.hasNextLine()) {
-						out.flush();
 						err.println(stderr.nextLine());
 						equal.set(false);
 					}

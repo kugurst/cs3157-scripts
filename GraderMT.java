@@ -3,6 +3,7 @@ import java.io.FileOutputStream;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.util.Timer;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -21,7 +22,13 @@ public class GraderMT
 	/** This constructor isn't all that interesting */
 	public GraderMT(String root, int threads)
 	{
+		// The extra 1 is just in case one thread takes too long to quit after another thread is
+		// created
 		Checks.exec = Executors.newFixedThreadPool(2 * threads + 1);
+		Checks.tmArr = new Timer[threads];
+		Timer[] tmArr = Checks.tmArr;
+		for (int j = 0; j < tmArr.length; j++)
+			tmArr[j] = new Timer(true);
 		// We'll be single threaded to populate our list with all folders to check.
 		File rootDir = new File(root);
 		ConcurrentLinkedQueue<File> uniDirs = new ConcurrentLinkedQueue<File>();
@@ -31,7 +38,7 @@ public class GraderMT
 		// Then, spawn the requested number of threads
 		Thread[] workers = new Thread[threads];
 		for (int i = 0; i < threads; i++) {
-			workers[i] = new Thread(new GraderWorker(uniDirs));
+			workers[i] = new Thread(new GraderWorker(uniDirs, i));
 			workers[i].start();
 		}
 		// Wait for them to all finish
@@ -53,12 +60,16 @@ public class GraderMT
 		PrintStream		            out;
 		PrintStream		            err;
 		
+		// The worker number to retrieve the correct timer in checks
+		int		                    number;
+		
 		// The folder queue
 		ConcurrentLinkedQueue<File>	uniDirs;
 		
-		public GraderWorker(ConcurrentLinkedQueue<File> queue)
+		public GraderWorker(ConcurrentLinkedQueue<File> queue, int number)
 		{
 			uniDirs = queue;
+			this.number = number;
 		}
 		
 		@Override
@@ -83,7 +94,7 @@ public class GraderMT
 					if (results.isFile())
 						results.delete();
 					results.createNewFile();
-					check = new Checks(results);
+					check = new Checks(results, number);
 				}
 				catch (IOException e) {
 					System.err.println("Unable to redirect output to file");
