@@ -4,6 +4,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.lang.reflect.Field;
@@ -58,6 +59,7 @@ public class Checks
 		// Run make clean in the current directory.
 		try {
 			Process makeClean = runtime.exec("make clean", null, partDir);
+			currProc = makeClean;
 			final BufferedReader stdout =
 			        new BufferedReader(new InputStreamReader(makeClean.getInputStream()),
 			                2 * (1024 ^ 2));
@@ -77,7 +79,7 @@ public class Checks
 						stdout.close();
 					}
 					catch (IOException e) {
-						System.err.println(header + Thread.currentThread() + ":");
+						System.err.println(header + "Grader " + number + ":");
 						e.printStackTrace();
 						System.err.println(footer);
 					}
@@ -96,7 +98,7 @@ public class Checks
 						stderr.close();
 					}
 					catch (IOException e) {
-						System.err.print(header + Thread.currentThread() + ":");
+						System.err.print(header + "Grader " + number + ":");
 						e.printStackTrace();
 						System.err.println(footer);
 					}
@@ -108,12 +110,12 @@ public class Checks
 				cleanWorked = false;
 		}
 		catch (IOException e) {
-			System.err.println(Thread.currentThread() + ": Unable to run make clean in directory: "
+			System.err.println("Grader " + number + ": Unable to run make clean in directory: "
 			        + partDir);
 			e.printStackTrace();
 		}
 		catch (InterruptedException e) {
-			System.err.println(Thread.currentThread()
+			System.err.println("Grader " + number
 			        + ": Interrupted while waiting for make clean to finish.");
 			e.printStackTrace();
 		}
@@ -126,6 +128,7 @@ public class Checks
 				cleanWorked = false;
 			}
 		out.println();
+		currProc = null;
 		return cleanWorked;
 	}
 	
@@ -211,204 +214,136 @@ public class Checks
 	}
 	
 	/**
-	 * @param partDir
-	 * @param commandName
+	 * This command tests some arbitrary command by directly calling exec on the given command
+	 * string. It takes two optional arguments. <code>inputFile</code> refers to a file to be fed
+	 * directly into the program's stdin, and <code>limit</code> refers to how long in seconds to
+	 * run the program. If <code>inputFile</code> is null, then nothing will be piped to the
+	 * program. If <code>limit</code> is 0, then the program will run indefinetly.
+	 * @param workingDir
+	 *            - The initial working directory for this program (e.g. part1, part2,...)
+	 * @param command
 	 * @param inputFile
 	 * @return <code>{memory error, leak error}</code>
 	 */
-	public boolean[] testCommand(File partDir, final String commandName, File inputFile, int limit)
+	public boolean[] testCommand(File workingDir, String command, File inputFile, int limit)
 	{
+		// Marking the command name
+		final String commandName = command.split("\\ ")[0];
 		out.println("Command results:");
 		// Check to make sure the directory exists (i.e. they did this part)
-		if (partDir == null)
+		if (workingDir == null)
 			return new boolean[] {true, true};
 		
-		final File fPartDir = partDir;
 		// Open up the input file for reading, if it exists
 		// Valgrind error booleans
 		final AtomicBoolean memErr = new AtomicBoolean(true);
 		final AtomicBoolean leakErr = new AtomicBoolean(false);
-		int success = 1;
-		if (inputFile != null) {
-			try {
-				Scanner in = new Scanner(inputFile);
-				while (in.hasNextLine()) {
-					String line = in.nextLine();
-					out.println("Testing " + commandName + " with input: " + line);
-					Process partProc =
-					        runtime.exec("valgrind --leak-check=yes ./" + commandName, null,
-					                partDir);
-					System.out.println(Thread.currentThread() + ": started "
-					        + commandName.split("\\ ")[0]);
-					currProc = partProc;
-					final Scanner stdout = new Scanner(partProc.getInputStream());
-					final Scanner stderr = new Scanner(partProc.getErrorStream());
-					// Print the stdout of this process
-					exec.execute(new Runnable() {
-						@Override
-						public void run()
-						{
-							while (stdout.hasNextLine()) {
-								out.println(stdout.nextLine());
-							}
-							stdout.close();
-						}
-					});
-					// This stderr stream contains the output of valgrind. We can easily check for
-					// errors because:
-					// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
-					// (2) "LEAK SUMMARY:" being found means there were... leaks
-					exec.execute(new Runnable() {
-						@Override
-						public void run()
-						{
-							while (stderr.hasNextLine()) {
-								String line = stderr.nextLine();
-								// There was no memory error
-								if (line.contains("ERROR SUMMARY: 0"))
-									memErr.set(false);
-								if (line.contains("LEAK SUMMARY:"))
-									leakErr.set(true);
-								err.println(line);
-							}
-							stderr.close();
-						}
-					});
-					// Pipe the input line to the process
-					PrintWriter stdin = new PrintWriter(partProc.getOutputStream());
-					stdin.println(line);
-					stdin.flush();
-					stdin.close();
-					// This process is limited to the given number of seconds
-					final Thread waiting = Thread.currentThread();
-					if (limit > 0) {
-						TimerTask tt = new TimerTask() {
-							@Override
-							public void run()
-							{
-								killProcess(fPartDir);
-								System.err.println(waiting + ": killed "
-								        + commandName.split("\\ ")[0]);
-								out.println("Killed " + commandName.split("\\ ")[0]
-								        + ". Rerun to see if it behaves itself.");
-							}
-						};
-						tmArr[number].schedule(tt, limit * 1000);
-						System.out.println(Thread.currentThread() + ": timed waiting on "
-						        + commandName.split("\\ ")[0]);
-						success = partProc.waitFor();
-						// We no longer need to kill that process.
-						tt.cancel();
-					}
-					else {
-						System.out.println(Thread.currentThread() + ": waiting on "
-						        + commandName.split("\\ ")[0]);
-						success = partProc.waitFor();
-					}
-					out.println("Return code: " + success + "\n");
-				}
-				in.close();
-			}
-			catch (FileNotFoundException e) {
-				System.err.println(inputFile.getPath() + " does not exist.");
-				e.printStackTrace();
-				currProc = null;
-				return new boolean[] {true, true};
-			}
-			catch (IOException e) {
-				System.err.println("Could not run the specified command.");
-				currProc = null;
-				return new boolean[] {true, true};
-			}
-			catch (InterruptedException e) {
-				System.err.println("Interrupted while waiting for process to termingate.");
-				e.printStackTrace();
-			}
-		}
-		// Otherwise, simply run the specified command
-		else {
-			try {
-				out.println("Testing " + commandName);
-				Process partProc =
-				        runtime.exec("valgrind --leak-check=yes ./" + commandName, null, partDir);
-				System.out.println(Thread.currentThread() + ": started "
-				        + commandName.split("\\ ")[0]);
-				currProc = partProc;
-				final Scanner stdout = new Scanner(partProc.getInputStream());
-				final Scanner stderr = new Scanner(partProc.getErrorStream());
-				// Print the stdout of this process
-				exec.execute(new Runnable() {
-					@Override
-					public void run()
-					{
-						while (stdout.hasNextLine()) {
-							out.println(stdout.nextLine());
+		int retVal = 1;
+		try {
+			if (inputFile == null)
+				out.println("\tTesting: " + command);
+			else
+				out.println("\tTesting: " + command + " with " + inputFile.getName());
+			
+			Process proc = runtime.exec("valgrind --leak-check=yes ./" + command, null, workingDir);
+			System.out.println("Grader " + number + ": started " + commandName);
+			currProc = proc;
+			
+			final BufferedReader stdout =
+			        new BufferedReader(new InputStreamReader(proc.getInputStream()), 2 * (1024 ^ 2));
+			final BufferedReader stderr =
+			        new BufferedReader(new InputStreamReader(proc.getErrorStream()), 2 * (1024 ^ 2));
+			// Print the stdout of this process
+			exec.execute(new Runnable() {
+				@Override
+				public void run()
+				{
+					String line;
+					try {
+						while ((line = stdout.readLine()) != null) {
+							out.println("\t\t" + line);
 						}
 						stdout.close();
 					}
-				});
-				// This stderr stream contains the output of valgrind. We can easily check for
-				// errors because:
-				// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
-				// (2) "LEAK SUMMARY:" being found means there were... leaks
-				exec.execute(new Runnable() {
-					@Override
-					public void run()
-					{
-						while (stderr.hasNextLine()) {
-							String line = stderr.nextLine();
+					catch (IOException e) {
+						System.err.println(header + "Grader " + number + ":");
+						e.printStackTrace();
+						System.err.println(footer);
+					}
+				}
+			});
+			// This stderr stream contains the output of valgrind. We can easily check for
+			// errors because:
+			// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
+			// (2) "LEAK SUMMARY:" being found means there were... leaks
+			exec.execute(new Runnable() {
+				@Override
+				public void run()
+				{
+					String line;
+					try {
+						while ((line = stderr.readLine()) != null) {
 							// There was no memory error
 							if (line.contains("ERROR SUMMARY: 0"))
 								memErr.set(false);
+							// There were leaks
 							if (line.contains("LEAK SUMMARY:"))
 								leakErr.set(true);
-							err.println(line);
+							err.println("\t\t" + line);
 						}
 						stderr.close();
 					}
-				});
-				// Check the return of the valgrind process
-				// This process is limited to the given number of seconds
-				final Thread waiting = Thread.currentThread();
-				if (limit > 0) {
-					TimerTask tt = new TimerTask() {
-						@Override
-						public void run()
-						{
-							killProcess(fPartDir);
-							System.err.println(waiting + ": killed " + commandName.split("\\ ")[0]);
-							out.println("Killed " + commandName.split("\\ ")[0]
-							        + ". Rerun to see if it behaves itself.");
-						}
-					};
-					tmArr[number].schedule(tt, limit * 1000);
-					System.out.println(Thread.currentThread() + ": timed waiting on "
-					        + commandName.split("\\ ")[0]);
-					success = partProc.waitFor();
-					// We no longer need to kill that process.
-					tt.cancel();
+					catch (IOException e) {
+						System.err.println(header + "Grader " + number + ":");
+						e.printStackTrace();
+						System.err.println(footer);
+					}
 				}
-				else {
-					System.out.println(Thread.currentThread() + ": waiting on "
-					        + commandName.split("\\ ")[0]);
-					success = partProc.waitFor();
+			});
+			
+			// If we have an input file, feed that to the process
+			if (inputFile != null) {
+				try {
+					exec.execute(new LineFeeder(proc.getOutputStream(), inputFile));
 				}
-				out.println("Return code: " + success + "\n");
+				catch (FileNotFoundException e) {
+					System.err.println(header + "Grader " + number + ":");
+					e.printStackTrace();
+					System.err.println(footer);
+				}
 			}
-			catch (IOException e) {
-				System.err.println(Thread.currentThread()
-				        + "An error occured while trying to run: " + commandName);
-				currProc = null;
-				return new boolean[] {true, true};
+			
+			// Wake us limit number of seconds later if we were given a non-zero value for limit
+			if (limit > 0) {
+				ProcessKiller pk = new ProcessKiller(commandName);
+				tmArr[number].schedule(pk, limit * 1000);
+				System.out.println("Grader " + number + ": timed waiting on " + commandName);
+				// Now we wait
+				retVal = proc.waitFor();
+				// If we reached here, then the process terminated before the limit and we should
+				// not kill that PID.
+				pk.cancel();
 			}
-			catch (InterruptedException e) {
-				System.err.println("Interrupted while waiting for process to complete.");
-				e.printStackTrace();
+			else {
+				System.out.println("Grader " + number + ": waiting on " + commandName);
+				retVal = proc.waitFor();
 			}
+			out.println("\tReturn code: " + retVal + "\n");
+		}
+		catch (IOException e) {
+			System.err.println("Grader " + number + ": An error occured while trying to run: "
+			        + commandName);
+			currProc = null;
+			return new boolean[] {true, true};
+		}
+		catch (InterruptedException e) {
+			System.err.println("Grader " + number
+			        + ": Interrupted while waiting for process to complete.");
+			e.printStackTrace();
 		}
 		currProc = null;
 		// return code 126 for valgrind means it cannot find the file specified
-		if (success == 126)
+		if (retVal == 126)
 			return new boolean[] {true, true};
 		return new boolean[] {memErr.get(), leakErr.get()};
 	}
@@ -553,7 +488,6 @@ public class Checks
 		// Check to make sure the directory exists (i.e. they did this part)
 		if (partDir == null)
 			return new boolean[] {true, true};
-		final File fPartDir = partDir;
 		// Open up the input file for reading, if it exists
 		// Valgrind error booleans
 		final AtomicBoolean memErr = new AtomicBoolean(true);
@@ -616,7 +550,7 @@ public class Checks
 			}
 			// mdb-lookup-server never took the port
 			if (!(count < 2000)) {
-				killProcess(fPartDir);
+				killProcess();
 				System.err.println(Thread.currentThread() + ": port not bound");
 				out.println("mdb-lookup-server port was never bound!\n"
 				        + "Rerun to see memory memory errors and heap summary.");
@@ -655,7 +589,7 @@ public class Checks
 					@Override
 					public void run()
 					{
-						killProcess(fPartDir);
+						killProcess();
 						System.err.println(ncWait + ": killed mdb-lookup-server");
 						out.println("mdb-lookup-server took more than 5 seconds to send a response.");
 						killed.set(true);
@@ -669,26 +603,26 @@ public class Checks
 			}
 			catch (InterruptedException e) {
 				in.close();
-				killProcess(partDir);
+				killProcess();
 				success = partProc.waitFor();
 				out.println("Return code: " + success + "\n");
 				e.printStackTrace();
 				return new boolean[] {true, true};
 			}
 			in.close();
-			killProcess(partDir);
+			killProcess();
 			success = partProc.waitFor();
 			out.println("Return code: " + success + "\n");
 		}
 		catch (IOException e) {
 			System.err.println("An error occured while trying to run: " + commandName);
-			killProcess(partDir);
+			killProcess();
 			e.printStackTrace();
 			return new boolean[] {true, true};
 		}
 		catch (InterruptedException e) {
 			System.err.println("Interrupted while waiting for process to complete.");
-			killProcess(partDir);
+			killProcess();
 			e.printStackTrace();
 			return new boolean[] {true, true};
 		}
@@ -699,14 +633,14 @@ public class Checks
 		return new boolean[] {memErr.get(), leakErr.get()};
 	}
 	
-	private void killProcess(File procDir)
+	private void killProcess()
 	{
 		try {
 			// Get the PID of the process
 			Field f = currProc.getClass().getDeclaredField("pid");
 			f.setAccessible(true);
 			// Kill the process
-			Process kill = runtime.exec("kill -2 " + f.get(currProc), null, procDir);
+			Process kill = runtime.exec("kill -s SIGKILL " + f.get(currProc));
 			kill.waitFor();
 		}
 		catch (NoSuchFieldException e) {
@@ -895,5 +829,87 @@ public class Checks
 		}
 		
 		return false;
+	}
+	
+	private class StreamPrinter implements Runnable
+	{
+		PrintWriter		writer;
+		BufferedReader	stream;
+		int		       errorLevel;
+		String		   tabs;
+		
+		public StreamPrinter(int streamType, BufferedReader stream, int numTabs, int errorType)
+		{
+			if (streamType == 1)
+				writer = out;
+			else if (streamType == 2)
+				writer = err;
+			this.stream = stream;
+			errorLevel = errorType;
+			tabs = "";
+			for (int i = 0; i < numTabs; i++)
+				tabs += "\t";
+		}
+		
+		@Override
+		public void run()
+		{
+			String line;
+			try {
+				if (errorLevel == 0) {
+					while ((line = stream.readLine()) != null) {
+						writer.println(tabs + line);
+					}
+				}
+				else if (errorLevel == 1) {
+					
+				}
+				stream.close();
+			}
+			catch (IOException e) {
+				System.err.println(header + "Grader " + number + ":");
+				e.printStackTrace();
+				System.err.println(footer);
+			}
+		}
+	}
+	
+	private class ProcessKiller extends TimerTask
+	{
+		String	commandName;
+		
+		public ProcessKiller(String name)
+		{
+			commandName = name;
+		}
+		
+		@Override
+		public void run()
+		{
+			killProcess();
+			System.err.println("Grader " + number + ": killed " + commandName);
+			out.println("\nKilled " + commandName + ". Rerun to see if it behaves itself.");
+		}
+	}
+	
+	private class LineFeeder implements Runnable
+	{
+		PrintWriter	stdin;
+		Scanner		reader;
+		
+		public LineFeeder(OutputStream processStdin, File inputFile) throws FileNotFoundException
+		{
+			stdin = new PrintWriter(processStdin, true);
+			reader = new Scanner(inputFile);
+		}
+		
+		@Override
+		public void run()
+		{
+			while (reader.hasNextLine())
+				stdin.println(reader.nextLine());
+			reader.close();
+			stdin.close();
+		}
 	}
 }

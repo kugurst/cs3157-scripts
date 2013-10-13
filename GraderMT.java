@@ -22,9 +22,8 @@ public class GraderMT
 	/** This constructor isn't all that interesting */
 	public GraderMT(String root, int threads)
 	{
-		// The extra 1 is just in case one thread takes too long to quit after another thread is
-		// created
-		Checks.exec = Executors.newFixedThreadPool(2 * threads + 1);
+		// The extra set is for threads that take too long to quit
+		Checks.exec = Executors.newFixedThreadPool(3 * threads + 3);
 		Checks.tmArr = new Timer[threads];
 		Timer[] tmArr = Checks.tmArr;
 		for (int j = 0; j < tmArr.length; j++)
