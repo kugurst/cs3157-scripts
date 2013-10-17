@@ -5,7 +5,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.lang.reflect.Field;
@@ -136,7 +135,12 @@ public class Checks
 			else
 				out.println("\tTesting: " + command + " with " + inputFile.getName());
 			
-			Process proc = runtime.exec("valgrind --leak-check=yes ./" + command, null, workingDir);
+			ProcessBuilder pb = new ProcessBuilder("valgrind --leak-check=yes ./" + command);
+			pb.directory(workingDir);
+			// If we have an input file, feed that to the process
+			if (inputFile != null)
+				pb.redirectInput(inputFile);
+			Process proc = pb.start();
 			System.out.println("Grader " + number + ": started " + commandName);
 			currProc = proc;
 			
@@ -153,18 +157,6 @@ public class Checks
 			// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
 			// (2) "LEAK SUMMARY:" being found means there were... leaks
 			exec.execute(new StreamPrinter(2, stderr, 2, 2));
-			
-			// If we have an input file, feed that to the process
-			if (inputFile != null) {
-				try {
-					exec.execute(new LineFeeder(proc.getOutputStream(), inputFile));
-				}
-				catch (FileNotFoundException e) {
-					System.err.println(header + "Grader " + number + ":");
-					e.printStackTrace();
-					System.err.println(footer);
-				}
-			}
 			
 			// Wake us limit number of seconds later if we were given a non-zero value for limit
 			if (limit > 0) {
@@ -199,6 +191,60 @@ public class Checks
 		if (retVal == 126)
 			return new boolean[] {true, true};
 		return streamFindings;
+	}
+	
+	public int runCommand(File workingDir, String command, File inputFile, int limit)
+	{
+		String commandName = command.split("\\ ")[0];
+		out.println("====Custom command:+" + commandName + "====");
+		// Set the process parameters
+		ProcessBuilder pb = new ProcessBuilder(command);
+		pb.directory(workingDir);
+		if (inputFile != null)
+			pb.redirectInput(inputFile);
+		Process proc;
+		int retVal = -1;
+		try {
+			proc = pb.start();
+			currProc = proc;
+			// Get the process streams
+			final BufferedReader stdout =
+			        new BufferedReader(new InputStreamReader(proc.getInputStream()),
+			                2 * (int) Math.pow(1024, 2));
+			final BufferedReader stderr =
+			        new BufferedReader(new InputStreamReader(proc.getErrorStream()),
+			                2 * (int) Math.pow(1024, 2));
+			// Print them
+			exec.execute(new StreamPrinter(1, stdout, 0, 0));
+			exec.execute(new StreamPrinter(2, stderr, 0, 0));
+			// Wake us limit number of seconds later if we were given a non-zero value for limit
+			if (limit > 0) {
+				ProcessKiller pk = new ProcessKiller(commandName);
+				tmArr[number].schedule(pk, limit * 1000);
+				System.out.println("Grader " + number + ": timed waiting on " + commandName);
+				// Now we wait
+				retVal = proc.waitFor();
+				// If we reached here, then the process may have terminated already and we should
+				// not kill it again.
+				pk.cancel();
+			}
+			else {
+				System.out.println("Grader " + number + ": waiting on " + commandName);
+				retVal = proc.waitFor();
+			}
+		}
+		catch (IOException e) {
+			System.err.println("Grader " + number + ": An error occured while trying to run: "
+			        + commandName);
+			e.printStackTrace();
+		}
+		catch (InterruptedException e) {
+			System.err.println("Grader " + number + ": Interrupted while waiting for "
+			        + commandName + " to complete.");
+			e.printStackTrace();
+		}
+		currProc = null;
+		return retVal;
 	}
 	
 	public boolean checkMake(File partDir, String makeName)
@@ -341,10 +387,10 @@ public class Checks
 	
 	public void printMessage(String message, int stream)
 	{
-		if (stream == 0)
+		if (stream == 1)
 			out.println(message);
-		else if (stream == 1)
-			err.print(message);
+		else if (stream == 2)
+			err.println(message);
 	}
 	
 	public Checks(File target, int number) throws FileNotFoundException
@@ -840,27 +886,6 @@ public class Checks
 			killProcess();
 			System.err.println("Grader " + number + ": killed " + commandName);
 			out.println("\nKilled " + commandName + ". Rerun to see if it behaves itself.");
-		}
-	}
-	
-	private class LineFeeder implements Runnable
-	{
-		PrintWriter	stdin;
-		Scanner		reader;
-		
-		public LineFeeder(OutputStream processStdin, File inputFile) throws FileNotFoundException
-		{
-			stdin = new PrintWriter(processStdin, true);
-			reader = new Scanner(inputFile);
-		}
-		
-		@Override
-		public void run()
-		{
-			while (reader.hasNextLine())
-				stdin.println(reader.nextLine());
-			reader.close();
-			stdin.close();
 		}
 	}
 }
