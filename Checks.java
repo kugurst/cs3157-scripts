@@ -25,37 +25,37 @@ public class Checks
 {
 	// The worker number of the instantiating GradeWorker to be used for retrieving the correct
 	// timer.
-	int	                                 number;
-	
+	int										number;
+
 	// The runtime for executing commands
-	static Runtime	                     runtime	= Runtime.getRuntime();
-	
+	static Runtime							runtime	= Runtime.getRuntime();
+
 	// The thread executor used for printing the stdout and stderr of the run commands
-	public static ExecutorService	     exec;
-	
+	public static ExecutorService			exec;
+
 	// The stdout and stderr for this class
-	final PrintWriter	                 out;
-	final PrintWriter	                 err;
-	
+	final PrintWriter						out;
+	final PrintWriter						err;
+
 	// The header and the footer to denote System errors that occur (and may or may not be due to
 	// the student)
-	static String	                     header	 = "==========ERROR==========\n";
-	static String	                     footer	 = "=========================";
-	
+	static String							header	= "==========ERROR==========\n";
+	static String							footer	= "=========================";
+
 	// A field to contain the current process to be tested that is running.
-	Process	                             currProc;
+	Process									currProc;
 	// A timer to be used to cut down on thread creation
-	public static Timer	                 tmArr[];
-	
+	public static Timer						tmArr[];
+
 	// An array used to hold the "return" for StreamPrinter
-	private boolean[]	                 streamFindings;
-	
+	private boolean[]						streamFindings;
+
 	// A linked list to hold the parsed git commits
-	LinkedList<String>	                 commitTitles;
-	LinkedList<String>	                 commitBodies;
-	public static HashSet<String>	     invalidCommitRegex;
+	LinkedList<String>						commitTitles;
+	LinkedList<String>						commitBodies;
+	public static HashSet<String>			invalidCommitRegex;
 	private LinkedBlockingQueue<Integer>	messanger;
-	
+
 	public boolean checkMakeClean(File partDir, String makeName)
 	{
 		out.println("Checking make clean:");
@@ -70,35 +70,34 @@ public class Checks
 			Process makeClean = runtime.exec("make clean", null, partDir);
 			currProc = makeClean;
 			final BufferedReader stdout =
-			        new BufferedReader(new InputStreamReader(makeClean.getInputStream()),
-			                2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(makeClean.getInputStream()),
+					2 * (int) Math.pow(1024, 2));
 			final BufferedReader stderr =
-			        new BufferedReader(new InputStreamReader(makeClean.getErrorStream()),
-			                2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(makeClean.getErrorStream()),
+					2 * (int) Math.pow(1024, 2));
 			// Print the stdout of this process
 			exec.execute(new StreamPrinter(1, stdout, 1, 0));
 			// Print the stderr of this process
 			exec.execute(new StreamPrinter(2, stderr, 1, 0));
 			// Wait for the command to finish
 			int success = makeClean.waitFor();
-			if (success != 0)
-				cleanWorked = false;
-		}
-		catch (IOException e) {
+			messanger.take();
+			messanger.take();
+			if (success != 0) cleanWorked = false;
+		} catch (IOException e) {
 			System.err.println("Grader " + number + ": Unable to run make clean in directory: "
-			        + partDir);
+				+ partDir);
 			e.printStackTrace();
-		}
-		catch (InterruptedException e) {
+		} catch (InterruptedException e) {
 			System.err.println("Grader " + number
-			        + ": Interrupted while waiting for make clean to finish.");
+				+ ": Interrupted while waiting for make clean to finish.");
 			e.printStackTrace();
 		}
 		// Checking to make sure that make clean removed everything it should
 		for (File f : partDir.listFiles())
 			if (f.getName().endsWith(".o") || f.getName().compareTo(makeName) == 0
-			        || f.getName().compareTo("core") == 0 || f.getName().compareTo("a.out") == 0
-			        || f.getName().endsWith(".gch")) {
+				|| f.getName().compareTo("core") == 0 || f.getName().compareTo("a.out") == 0
+				|| f.getName().endsWith(".gch")) {
 				f.delete();
 				cleanWorked = false;
 			}
@@ -106,9 +105,8 @@ public class Checks
 		currProc = null;
 		return cleanWorked;
 	}
-	
-	/**
-	 * This command tests some arbitrary command by directly calling exec on the given command
+
+	/** This command tests some arbitrary command by directly calling exec on the given command
 	 * string. It takes two optional arguments. <code>inputFile</code> refers to a file to be fed
 	 * directly into the program's stdin, and <code>limit</code> refers to how long in seconds to
 	 * run the program. If <code>inputFile</code> is null, then nothing will be piped to the
@@ -117,39 +115,34 @@ public class Checks
 	 *            - The initial working directory for this program (e.g. part1, part2,...)
 	 * @param command
 	 * @param inputFile
-	 * @return <code>{memory error, leak error}</code>
-	 */
+	 * @return <code>{memory error, leak error}</code> */
 	public boolean[] testCommand(File workingDir, String command, File inputFile, int limit)
 	{
 		// Marking the command name
 		final String commandName = command.split("\\ ")[0];
 		out.println("Command results:");
 		// Check to make sure the directory exists (i.e. they did this part)
-		if (workingDir == null)
-			return new boolean[] {true, true};
-		
+		if (workingDir == null) return new boolean[] {true, true};
+
 		int retVal = 1;
 		try {
-			if (inputFile == null)
-				out.println("\tTesting: " + command);
-			else
-				out.println("\tTesting: " + command + " with " + inputFile.getName());
-			
+			if (inputFile == null) out.println("\tTesting: " + command);
+			else out.println("\tTesting: " + command + " with " + inputFile.getName());
+
 			ProcessBuilder pb = new ProcessBuilder("valgrind --leak-check=yes ./" + command);
 			pb.directory(workingDir);
 			// If we have an input file, feed that to the process
-			if (inputFile != null)
-				pb.redirectInput(inputFile);
+			if (inputFile != null) pb.redirectInput(inputFile);
 			Process proc = pb.start();
 			System.out.println("Grader " + number + ": started " + commandName);
 			currProc = proc;
-			
+
 			final BufferedReader stdout =
-			        new BufferedReader(new InputStreamReader(proc.getInputStream()),
-			                2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(proc.getInputStream()),
+					2 * (int) Math.pow(1024, 2));
 			final BufferedReader stderr =
-			        new BufferedReader(new InputStreamReader(proc.getErrorStream()),
-			                2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(proc.getErrorStream()),
+					2 * (int) Math.pow(1024, 2));
 			// Print the stdout of this process
 			exec.execute(new StreamPrinter(1, stdout, 2, 0));
 			// This stderr stream contains the output of valgrind. We can easily check for
@@ -157,7 +150,7 @@ public class Checks
 			// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
 			// (2) "LEAK SUMMARY:" being found means there were... leaks
 			exec.execute(new StreamPrinter(2, stderr, 2, 2));
-			
+
 			// Wake us limit number of seconds later if we were given a non-zero value for limit
 			if (limit > 0) {
 				ProcessKiller pk = new ProcessKiller(commandName);
@@ -168,31 +161,29 @@ public class Checks
 				// If we reached here, then the process may have terminated already and we should
 				// not kill it again.
 				pk.cancel();
-			}
-			else {
+			} else {
 				System.out.println("Grader " + number + ": waiting on " + commandName);
 				retVal = proc.waitFor();
 			}
+			messanger.take();
+			messanger.take();
 			out.println("\tReturn code: " + retVal + "\n");
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			System.err.println("Grader " + number + ": An error occured while trying to run: "
-			        + commandName);
+				+ commandName);
 			currProc = null;
 			return new boolean[] {true, true};
-		}
-		catch (InterruptedException e) {
+		} catch (InterruptedException e) {
 			System.err.println("Grader " + number + ": Interrupted while waiting for "
-			        + commandName + " to complete.");
+				+ commandName + " to complete.");
 			e.printStackTrace();
 		}
 		currProc = null;
 		// return code 126 for valgrind means it cannot find the file specified
-		if (retVal == 126)
-			return new boolean[] {true, true};
+		if (retVal == 126) return new boolean[] {true, true};
 		return streamFindings;
 	}
-	
+
 	public int runCommand(File workingDir, String command, File inputFile, int limit)
 	{
 		String commandName = command.split("\\ ")[0];
@@ -200,8 +191,7 @@ public class Checks
 		// Set the process parameters
 		ProcessBuilder pb = new ProcessBuilder(command);
 		pb.directory(workingDir);
-		if (inputFile != null)
-			pb.redirectInput(inputFile);
+		if (inputFile != null) pb.redirectInput(inputFile);
 		Process proc;
 		int retVal = -1;
 		try {
@@ -209,11 +199,11 @@ public class Checks
 			currProc = proc;
 			// Get the process streams
 			final BufferedReader stdout =
-			        new BufferedReader(new InputStreamReader(proc.getInputStream()),
-			                2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(proc.getInputStream()),
+					2 * (int) Math.pow(1024, 2));
 			final BufferedReader stderr =
-			        new BufferedReader(new InputStreamReader(proc.getErrorStream()),
-			                2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(proc.getErrorStream()),
+					2 * (int) Math.pow(1024, 2));
 			// Print them
 			exec.execute(new StreamPrinter(1, stdout, 0, 0));
 			exec.execute(new StreamPrinter(2, stderr, 0, 0));
@@ -227,68 +217,66 @@ public class Checks
 				// If we reached here, then the process may have terminated already and we should
 				// not kill it again.
 				pk.cancel();
-			}
-			else {
+			} else {
 				System.out.println("Grader " + number + ": waiting on " + commandName);
 				retVal = proc.waitFor();
 			}
-		}
-		catch (IOException e) {
+			messanger.take();
+			messanger.take();
+		} catch (IOException e) {
 			System.err.println("Grader " + number + ": An error occured while trying to run: "
-			        + commandName);
+				+ commandName);
 			e.printStackTrace();
-		}
-		catch (InterruptedException e) {
+		} catch (InterruptedException e) {
 			System.err.println("Grader " + number + ": Interrupted while waiting for "
-			        + commandName + " to complete.");
+				+ commandName + " to complete.");
 			e.printStackTrace();
 		}
 		currProc = null;
 		return retVal;
 	}
-	
+
 	public boolean checkMake(File partDir, String makeName)
 	{
 		out.println("Make results:");
 		Process makeProc = null;
-		if (!partDir.isDirectory())
-			return false;
+		if (!partDir.isDirectory()) return false;
 		final AtomicBoolean makeErr = new AtomicBoolean(false);
-		
+
 		// Run the make
 		try {
 			makeProc = runtime.exec("make", null, partDir);
 			final BufferedReader stdout =
-			        new BufferedReader(new InputStreamReader(makeProc.getInputStream()),
-			                2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(makeProc.getInputStream()),
+					2 * (int) Math.pow(1024, 2));
 			final BufferedReader stderr =
-			        new BufferedReader(new InputStreamReader(makeProc.getErrorStream()),
-			                2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(makeProc.getErrorStream()),
+					2 * (int) Math.pow(1024, 2));
 			// Print the stdout of this process
 			exec.execute(new StreamPrinter(1, stdout, 1, 0));
 			// If anything prints to here on make, then either gcc or make had an error, in which
 			// case, this test is a fail
 			exec.execute(new StreamPrinter(2, stderr, 1, 1));
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			System.err.println("Grader " + number + ": Could not run \"make\" in: "
-			        + partDir.getPath());
+				+ partDir.getPath());
 			e.printStackTrace();
 		}
-		
+
 		// Wait for the process to terminate
 		int goodMake = 1;
 		if (makeProc != null) {
 			try {
 				goodMake = makeProc.waitFor();
-			}
-			catch (InterruptedException e) {
+				messanger.take();
+				messanger.take();
+			} catch (InterruptedException e) {
 				System.err.println("Grader " + number
-				        + ": Interrupted while waiting for make to compile.");
+					+ ": Interrupted while waiting for make to compile.");
 				e.printStackTrace();
 			}
 		}
-		
+
 		// Finally, check that the executable exists:
 		boolean foundExec = false;
 		for (File f : partDir.listFiles()) {
@@ -298,13 +286,12 @@ public class Checks
 			}
 		}
 		out.println();
-		
+
 		// Compile the results
-		if (goodMake == 0 && foundExec && !makeErr.get())
-			return true;
+		if (goodMake == 0 && foundExec && !makeErr.get()) return true;
 		return false;
 	}
-	
+
 	public void shutdown()
 	{
 		out.flush();
@@ -312,18 +299,18 @@ public class Checks
 		out.close();
 		err.close();
 	}
-	
+
 	public boolean checkGitCommits(File partDir)
 	{
 		out.println("Checking git commits:");
-		
+
 		// Get the git log of the given directory //
 		// Run git log
 		Process gitLog;
 		try {
 			gitLog =
-			        runtime.exec("git log --abbrev-commit --format=format:\"%s:|:%b%n...\"", null,
-			                partDir);
+				runtime.exec("git log --abbrev-commit --format=format:\"%s:|:%b%n...\"", null,
+					partDir);
 			// Ignore stderr
 			new StreamGobbler(gitLog.getErrorStream());
 			// Read stdout
@@ -332,23 +319,20 @@ public class Checks
 			gitLog.waitFor();
 			// And the LogReader to parse
 			messanger.take();
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			System.err.println("Grader " + number + ": Could not run git log in directory:"
-			        + partDir.getAbsolutePath());
+				+ partDir.getAbsolutePath());
 			e.printStackTrace();
-		}
-		catch (InterruptedException e) {
+		} catch (InterruptedException e) {
 			System.err.println(header + "Grader " + number
-			        + ": Interrupted while waiting for git log to finish.");
+				+ ": Interrupted while waiting for git log to finish.");
 			e.printStackTrace();
 			System.err.println(footer);
 		}
-		
+
 		// Make sure they have at least 5 commits
-		if (commitBodies.size() < 5)
-			return false;
-		
+		if (commitBodies.size() < 5) return false;
+
 		int count = 0;
 		// Make sure the commits are valid
 		for (int i = 0; i < commitBodies.size(); i++) {
@@ -373,26 +357,20 @@ public class Checks
 				badTitle = title.find();
 				badBody = body.find();
 			}
-			if (badTitle && badBody)
-				continue;
-			else
-				count++;
+			if (badTitle && badBody) continue;
+			else count++;
 		}
 		// We didn't have enough good commits
-		if (count < 5)
-			return false;
-		else
-			return true;
+		if (count < 5) return false;
+		else return true;
 	}
-	
+
 	public void printMessage(String message, int stream)
 	{
-		if (stream == 1)
-			out.println(message);
-		else if (stream == 2)
-			err.println(message);
+		if (stream == 1) out.println(message);
+		else if (stream == 2) err.println(message);
 	}
-	
+
 	public Checks(File target, int number) throws FileNotFoundException
 	{
 		FileOutputStream fileStream = null;
@@ -403,13 +381,12 @@ public class Checks
 		invalidCommitRegex = new HashSet<String>();
 		messanger = new LinkedBlockingQueue<Integer>();
 	}
-	
+
 	public boolean[] mdbTest(File partDir, String commandName, File inputFile, String portNum)
 	{
 		out.println("Command results:");
 		// Check to make sure the directory exists (i.e. they did this part)
-		if (partDir == null)
-			return new boolean[] {true, true};
+		if (partDir == null) return new boolean[] {true, true};
 		// Open up the input file for reading, if it exists
 		// Valgrind error booleans
 		final AtomicBoolean memErr = new AtomicBoolean(true);
@@ -418,7 +395,7 @@ public class Checks
 		try {
 			out.println("Testing " + commandName);
 			Process partProc =
-			        runtime.exec("valgrind --leak-check=yes ./" + commandName, null, partDir);
+				runtime.exec("valgrind --leak-check=yes ./" + commandName, null, partDir);
 			System.out.println(Thread.currentThread() + ": started mdb-lookup-server");
 			currProc = partProc;
 			final Scanner stdout = new Scanner(partProc.getInputStream());
@@ -445,22 +422,19 @@ public class Checks
 					while (stderr.hasNextLine()) {
 						String line = stderr.nextLine();
 						// There was no memory error
-						if (line.contains("ERROR SUMMARY: 0"))
-							memErr.set(false);
-						if (line.contains("LEAK SUMMARY:"))
-							leakErr.set(true);
+						if (line.contains("ERROR SUMMARY: 0")) memErr.set(false);
+						if (line.contains("LEAK SUMMARY:")) leakErr.set(true);
 						err.println(line);
 					}
 					stderr.close();
 				}
 			});
-			
+
 			// Make a file to hold the mdb server output
 			File mdbfile = new File(partDir.getParentFile(), "mdb.out.txt");
-			if (mdbfile.exists())
-				mdbfile.delete();
+			if (mdbfile.exists()) mdbfile.delete();
 			mdbfile.createNewFile();
-			
+
 			// For each line of input, make a new nc process
 			Scanner in = new Scanner(inputFile);
 			// Pause until the socket is no longer available
@@ -475,17 +449,16 @@ public class Checks
 				killProcess();
 				System.err.println(Thread.currentThread() + ": port not bound");
 				out.println("mdb-lookup-server port was never bound!\n"
-				        + "Rerun to see memory memory errors and heap summary.");
+					+ "Rerun to see memory memory errors and heap summary.");
 				in.close();
 				return new boolean[] {true, true};
 			}
-			
+
 			// Each netcat has 15 seconds to complete, at which point we kill the mdb-lookup-server
 			// which should free up the netcat
 			// make the command file
 			File ncfile = new File(partDir.getParentFile(), "nc.sh");
-			if (ncfile.exists())
-				ncfile.delete();
+			if (ncfile.exists()) ncfile.delete();
 			ncfile.createNewFile();
 			PrintStream ncFileOut = new PrintStream(ncfile);
 			System.out.println(Thread.currentThread() + ": Running nc on mdb-lookup-server");
@@ -494,11 +467,11 @@ public class Checks
 				// Write out the command to file
 				ncFileOut.println("echo nc for phrase \\\"" + line + "\\\": >> mdb.out.txt");
 				ncFileOut.println("echo " + line + " | nc -q 5 localhost " + portNum
-				        + " >> mdb.out.txt && echo >> mdb.out.txt");
+					+ " >> mdb.out.txt && echo >> mdb.out.txt");
 			}
 			ncFileOut.flush();
 			ncFileOut.close();
-			
+
 			Process ncproc = runtime.exec("bash nc.sh", null, partDir.getParentFile());
 			// Gobble this process's streams, as bash should output the nc stuff to file
 			new StreamGobbler(ncproc.getErrorStream());
@@ -520,10 +493,8 @@ public class Checks
 				tmArr[number].schedule(tt, 15 * 1000);
 				ncproc.waitFor();
 				// If we reach this point, then we don't need to interrupt
-				if (!killed.get())
-					tt.cancel();
-			}
-			catch (InterruptedException e) {
+				if (!killed.get()) tt.cancel();
+			} catch (InterruptedException e) {
 				in.close();
 				killProcess();
 				success = partProc.waitFor();
@@ -535,14 +506,12 @@ public class Checks
 			killProcess();
 			success = partProc.waitFor();
 			out.println("Return code: " + success + "\n");
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			System.err.println("An error occured while trying to run: " + commandName);
 			killProcess();
 			e.printStackTrace();
 			return new boolean[] {true, true};
-		}
-		catch (InterruptedException e) {
+		} catch (InterruptedException e) {
 			System.err.println("Interrupted while waiting for process to complete.");
 			killProcess();
 			e.printStackTrace();
@@ -550,11 +519,10 @@ public class Checks
 		}
 		// return code 126 for valgrind means it cannot find the file specified
 		currProc = null;
-		if (success == 126)
-			return new boolean[] {true, true};
+		if (success == 126) return new boolean[] {true, true};
 		return new boolean[] {memErr.get(), leakErr.get()};
 	}
-	
+
 	private void killProcess()
 	{
 		try {
@@ -564,33 +532,26 @@ public class Checks
 			// Kill the process
 			Process kill = runtime.exec("kill -s SIGKILL " + f.get(currProc));
 			kill.waitFor();
-		}
-		catch (NoSuchFieldException e) {
+		} catch (NoSuchFieldException e) {
 			e.printStackTrace();
-		}
-		catch (SecurityException e) {
+		} catch (SecurityException e) {
 			e.printStackTrace();
-		}
-		catch (IllegalArgumentException e) {
+		} catch (IllegalArgumentException e) {
 			e.printStackTrace();
-		}
-		catch (IllegalAccessException e) {
+		} catch (IllegalAccessException e) {
 			e.printStackTrace();
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			e.printStackTrace();
-		}
-		catch (InterruptedException e) {
+		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
 	}
-	
+
 	public boolean checkFileEquiv(File user, File base)
 	{
 		final AtomicBoolean equal = new AtomicBoolean(true);
 		// First, make sure the user's file exists
-		if (!user.isFile())
-			return false;
+		if (!user.isFile()) return false;
 		// Then, sanitize the user file
 		File script = sanitize(user);
 		script.delete();
@@ -602,8 +563,7 @@ public class Checks
 			diffWriter.println(command);
 			diffWriter.flush();
 			diffWriter.close();
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			e.printStackTrace();
 			return false;
 		}
@@ -637,44 +597,40 @@ public class Checks
 					stderr.close();
 				}
 			});
-			
+
 			// Wait for it to finish
 			diffExec.waitFor();
 			out.println();
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			e.printStackTrace();
 			return false;
-		}
-		catch (InterruptedException e) {
+		} catch (InterruptedException e) {
 			e.printStackTrace();
 			return false;
 		}
 		script.delete();
 		return equal.get();
 	}
-	
+
 	private File sanitize(File user)
 	{
 		// Write the bash script to sanitize the file
 		File bash = new File(user.getParent(), "san.sh");
-		if (bash.isFile())
-			bash.delete();
+		if (bash.isFile()) bash.delete();
 		PrintStream bashWriter = null;
 		try {
 			bash.createNewFile();
 			bashWriter = new PrintStream(bash);
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			e.printStackTrace();
 		}
 		// Write the script to file
 		bashWriter.println("sed '/^[[:space:]]*$/{:a;$d;N;/\\n[[:space:]]*$/ba}' " + user.getName()
-		        + " > " + user.getName() + ".2");
+			+ " > " + user.getName() + ".2");
 		bashWriter.println("mv " + user.getName() + ".2 " + user.getName());
 		bashWriter.flush();
 		bashWriter.close();
-		
+
 		// Execute the script
 		try {
 			Process bashExec = runtime.exec("bash san.sh", null, user.getParentFile());
@@ -704,27 +660,24 @@ public class Checks
 					stderr.close();
 				}
 			});
-			
+
 			// Wait for it to finish
 			bashExec.waitFor();
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
-		catch (InterruptedException e) {
-			e.printStackTrace();
-		}
-		
+
 		// We're done
 		return bash;
 	}
-	
+
 	public static boolean available(int port)
 	{
-		if (port < 1 || port > 65535) {
-			throw new IllegalArgumentException("Invalid start port: " + port);
-		}
-		
+		if (port < 1 || port > 65535) { throw new IllegalArgumentException("Invalid start port: "
+			+ port); }
+
 		ServerSocket ss = null;
 		DatagramSocket ds = null;
 		try {
@@ -733,36 +686,33 @@ public class Checks
 			ds = new DatagramSocket(port);
 			ds.setReuseAddress(true);
 			return true;
-		}
-		catch (IOException e) {}
-		finally {
+		} catch (IOException e) {} finally {
 			if (ds != null) {
 				ds.close();
 			}
-			
+
 			if (ss != null) {
 				try {
 					ss.close();
-				}
-				catch (IOException e) {
+				} catch (IOException e) {
 					/* should not be thrown */
 				}
 			}
 		}
-		
+
 		return false;
 	}
-	
+
 	private class LogReader implements Runnable
 	{
 		BufferedReader	logStream;
-		
+
 		public LogReader(InputStream stream)
 		{
 			logStream =
-			        new BufferedReader(new InputStreamReader(stream), 2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(stream), 2 * (int) Math.pow(1024, 2));
 		}
-		
+
 		@Override
 		public void run()
 		{
@@ -780,51 +730,43 @@ public class Checks
 						title.delete(0, title.length());
 						body.delete(0, body.length());
 						breakFound = false;
-					}
-					else {
+					} else {
 						if (line.contains(":|:")) {
 							String[] commentStart = line.split("\\:\\|\\:");
 							title.append(commentStart[0]);
-							if (commentStart.length == 2)
-								body.append(commentStart[1]);
+							if (commentStart.length == 2) body.append(commentStart[1]);
 							breakFound = true;
-						}
-						else {
-							if (breakFound)
-								body.append(line);
-							else
-								title.append(line);
+						} else {
+							if (breakFound) body.append(line);
+							else title.append(line);
 						}
 					}
 				}
-			}
-			catch (IOException e) {
+			} catch (IOException e) {
 				err.println("Failed to read git log.");
 			}
 			messanger.add(0);
 		}
 	}
-	
+
 	private class StreamPrinter implements Runnable
 	{
 		PrintWriter		writer;
 		BufferedReader	stream;
-		int		       errorLevel;
-		String		   tabs;
-		
+		int				errorLevel;
+		String			tabs;
+
 		public StreamPrinter(int streamType, BufferedReader stream, int numTabs, int errorType)
 		{
-			if (streamType == 1)
-				writer = out;
-			else if (streamType == 2)
-				writer = err;
+			if (streamType == 1) writer = out;
+			else if (streamType == 2) writer = err;
 			this.stream = stream;
 			errorLevel = errorType;
 			tabs = "";
 			for (int i = 0; i < numTabs; i++)
 				tabs += "\t";
 		}
-		
+
 		@Override
 		public void run()
 		{
@@ -834,52 +776,46 @@ public class Checks
 					while ((line = stream.readLine()) != null) {
 						writer.println(tabs + line);
 					}
-				}
-				else if (errorLevel == 1) {
+				} else if (errorLevel == 1) {
 					boolean streamWrote = false;
 					while ((line = stream.readLine()) != null) {
 						// If this line is empty or whitespace, continue
-						if (line.trim().isEmpty())
-							continue;
+						if (line.trim().isEmpty()) continue;
 						writer.println(tabs + line);
-						if (!streamWrote)
-							streamWrote = true;
+						if (!streamWrote) streamWrote = true;
 					}
 					streamFindings = new boolean[] {streamWrote};
-				}
-				else {
+				} else {
 					boolean memErr = true;
 					boolean leakErr = false;
 					while ((line = stream.readLine()) != null) {
 						// There was no memory error
-						if (line.contains("ERROR SUMMARY: 0"))
-							memErr = false;
+						if (line.contains("ERROR SUMMARY: 0")) memErr = false;
 						// There were leaks
-						if (line.contains("LEAK SUMMARY:"))
-							leakErr = true;
+						if (line.contains("LEAK SUMMARY:")) leakErr = true;
 						err.println(tabs + line);
 					}
 					streamFindings = new boolean[] {memErr, leakErr};
 				}
 				stream.close();
-			}
-			catch (IOException e) {
+				messanger.add(0);
+			} catch (IOException e) {
 				System.err.println(header + "Grader " + number + ":");
 				e.printStackTrace();
 				System.err.println(footer);
 			}
 		}
 	}
-	
+
 	private class ProcessKiller extends TimerTask
 	{
 		String	commandName;
-		
+
 		public ProcessKiller(String name)
 		{
 			commandName = name;
 		}
-		
+
 		@Override
 		public void run()
 		{
