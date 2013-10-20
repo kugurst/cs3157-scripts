@@ -39,6 +39,8 @@ do
     file_name=${file##*/}
     # now get just the uni
     uni=${file_name//-*/}
+    # Delete the uni dir if it exists
+    rm -rf $uni_dir/$uni
     # get the skeleton code of the current lab
     git clone /home/jae/cs3157-pub/$lab $uni_dir/$uni
     # mark the absolute path to the mbox file. We will be changing directories
