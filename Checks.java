@@ -83,7 +83,8 @@ public class Checks
 			int success = makeClean.waitFor();
 			messanger.take();
 			messanger.take();
-			if (success != 0) cleanWorked = false;
+			if (success != 0)
+				cleanWorked = false;
 		} catch (IOException e) {
 			System.err.println("Grader " + number + ": Unable to run make clean in directory: "
 				+ partDir);
@@ -94,8 +95,12 @@ public class Checks
 			e.printStackTrace();
 		}
 		// Checking to make sure that make clean removed everything it should
+		String[] names = makeName.split(",\\ ");
+		HashSet<String> nameSet = new HashSet<String>();
+		for (String n : names)
+			nameSet.add(n);
 		for (File f : partDir.listFiles())
-			if (f.getName().endsWith(".o") || f.getName().compareTo(makeName) == 0
+			if (f.getName().endsWith(".o") || nameSet.contains(f.getName())
 				|| f.getName().compareTo("core") == 0 || f.getName().compareTo("a.out") == 0
 				|| f.getName().endsWith(".gch")) {
 				f.delete();
@@ -122,17 +127,21 @@ public class Checks
 		final String commandName = command.split("\\ ")[0];
 		out.println("Command results:");
 		// Check to make sure the directory exists (i.e. they did this part)
-		if (workingDir == null) return new boolean[] {true, true};
+		if (workingDir == null)
+			return new boolean[] {true, true};
 
 		int retVal = 1;
 		try {
-			if (inputFile == null) out.println("\tTesting: " + command);
-			else out.println("\tTesting: " + command + " with " + inputFile.getName());
+			if (inputFile == null)
+				out.println("\tTesting: " + command);
+			else
+				out.println("\tTesting: " + command + " with " + inputFile.getName());
 
 			ProcessBuilder pb = new ProcessBuilder("valgrind --leak-check=yes ./" + command);
 			pb.directory(workingDir);
 			// If we have an input file, feed that to the process
-			if (inputFile != null) pb.redirectInput(inputFile);
+			if (inputFile != null)
+				pb.redirectInput(inputFile);
 			Process proc = pb.start();
 			System.out.println("Grader " + number + ": started " + commandName);
 			currProc = proc;
@@ -180,8 +189,33 @@ public class Checks
 		}
 		currProc = null;
 		// return code 126 for valgrind means it cannot find the file specified
-		if (retVal == 126) return new boolean[] {true, true};
+		if (retVal == 126)
+			return new boolean[] {true, true};
 		return streamFindings;
+	}
+
+	public int jockeyCommand(File workingDir, String command, File inputFile)
+	{
+		ProcessBuilder pb = new ProcessBuilder(command);
+		pb.directory(workingDir);
+		if (inputFile != null)
+			pb.redirectInput(inputFile);
+		Process proc;
+		int retVal = -1;
+		try {
+			proc = pb.start();
+			currProc = proc;
+			// Get the process streams
+			new StreamGobbler(proc.getInputStream());
+			new StreamGobbler(proc.getErrorStream());
+			retVal = proc.waitFor();
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		currProc = null;
+		return retVal;
 	}
 
 	public int runCommand(File workingDir, String command, File inputFile, int limit)
@@ -191,7 +225,8 @@ public class Checks
 		// Set the process parameters
 		ProcessBuilder pb = new ProcessBuilder(command);
 		pb.directory(workingDir);
-		if (inputFile != null) pb.redirectInput(inputFile);
+		if (inputFile != null)
+			pb.redirectInput(inputFile);
 		Process proc;
 		int retVal = -1;
 		try {
@@ -240,7 +275,8 @@ public class Checks
 	{
 		out.println("Make results:");
 		Process makeProc = null;
-		if (!partDir.isDirectory()) return false;
+		if (!partDir.isDirectory())
+			return false;
 		final AtomicBoolean makeErr = new AtomicBoolean(false);
 
 		// Run the make
@@ -277,18 +313,27 @@ public class Checks
 			}
 		}
 
-		// Finally, check that the executable exists:
-		boolean foundExec = false;
-		for (File f : partDir.listFiles()) {
-			if (f.getName().compareTo(makeName) == 0) {
-				foundExec = true;
+		// Finally, check that the executable(s) exists:
+		String[] names = makeName.split(",\\ ");
+		HashSet<String> nameSet = new HashSet<String>();
+		for (String n : names)
+			nameSet.add(n);
+		boolean[] foundArr = new boolean[names.length];
+		int found = 0;
+		for (File f : partDir.listFiles())
+			if (f.getName().compareTo(makeName) == 0)
+				foundArr[found++] = true;
+		out.println();
+		boolean foundExec = true;
+		for (boolean f : foundArr) {
+			if (!f) {
+				foundExec = false;
 				break;
 			}
 		}
-		out.println();
-
 		// Compile the results
-		if (goodMake == 0 && foundExec && !makeErr.get()) return true;
+		if (goodMake == 0 && foundExec && !makeErr.get())
+			return true;
 		return false;
 	}
 
@@ -331,7 +376,8 @@ public class Checks
 		}
 
 		// Make sure they have at least 5 commits
-		if (commitBodies.size() < 5) return false;
+		if (commitBodies.size() < 5)
+			return false;
 
 		int count = 0;
 		// Make sure the commits are valid
@@ -357,18 +403,24 @@ public class Checks
 				badTitle = title.find();
 				badBody = body.find();
 			}
-			if (badTitle && badBody) continue;
-			else count++;
+			if (badTitle && badBody)
+				continue;
+			else
+				count++;
 		}
 		// We didn't have enough good commits
-		if (count < 5) return false;
-		else return true;
+		if (count < 5)
+			return false;
+		else
+			return true;
 	}
 
 	public void printMessage(String message, int stream)
 	{
-		if (stream == 1) out.println(message);
-		else if (stream == 2) err.println(message);
+		if (stream == 1)
+			out.println(message);
+		else if (stream == 2)
+			err.println(message);
 	}
 
 	public Checks(File target, int number) throws FileNotFoundException
@@ -386,7 +438,8 @@ public class Checks
 	{
 		out.println("Command results:");
 		// Check to make sure the directory exists (i.e. they did this part)
-		if (partDir == null) return new boolean[] {true, true};
+		if (partDir == null)
+			return new boolean[] {true, true};
 		// Open up the input file for reading, if it exists
 		// Valgrind error booleans
 		final AtomicBoolean memErr = new AtomicBoolean(true);
@@ -422,8 +475,10 @@ public class Checks
 					while (stderr.hasNextLine()) {
 						String line = stderr.nextLine();
 						// There was no memory error
-						if (line.contains("ERROR SUMMARY: 0")) memErr.set(false);
-						if (line.contains("LEAK SUMMARY:")) leakErr.set(true);
+						if (line.contains("ERROR SUMMARY: 0"))
+							memErr.set(false);
+						if (line.contains("LEAK SUMMARY:"))
+							leakErr.set(true);
 						err.println(line);
 					}
 					stderr.close();
@@ -432,7 +487,8 @@ public class Checks
 
 			// Make a file to hold the mdb server output
 			File mdbfile = new File(partDir.getParentFile(), "mdb.out.txt");
-			if (mdbfile.exists()) mdbfile.delete();
+			if (mdbfile.exists())
+				mdbfile.delete();
 			mdbfile.createNewFile();
 
 			// For each line of input, make a new nc process
@@ -458,7 +514,8 @@ public class Checks
 			// which should free up the netcat
 			// make the command file
 			File ncfile = new File(partDir.getParentFile(), "nc.sh");
-			if (ncfile.exists()) ncfile.delete();
+			if (ncfile.exists())
+				ncfile.delete();
 			ncfile.createNewFile();
 			PrintStream ncFileOut = new PrintStream(ncfile);
 			System.out.println(Thread.currentThread() + ": Running nc on mdb-lookup-server");
@@ -493,7 +550,8 @@ public class Checks
 				tmArr[number].schedule(tt, 15 * 1000);
 				ncproc.waitFor();
 				// If we reach this point, then we don't need to interrupt
-				if (!killed.get()) tt.cancel();
+				if (!killed.get())
+					tt.cancel();
 			} catch (InterruptedException e) {
 				in.close();
 				killProcess();
@@ -519,7 +577,8 @@ public class Checks
 		}
 		// return code 126 for valgrind means it cannot find the file specified
 		currProc = null;
-		if (success == 126) return new boolean[] {true, true};
+		if (success == 126)
+			return new boolean[] {true, true};
 		return new boolean[] {memErr.get(), leakErr.get()};
 	}
 
@@ -551,7 +610,8 @@ public class Checks
 	{
 		final AtomicBoolean equal = new AtomicBoolean(true);
 		// First, make sure the user's file exists
-		if (!user.isFile()) return false;
+		if (!user.isFile())
+			return false;
 		// Then, sanitize the user file
 		File script = sanitize(user);
 		script.delete();
@@ -616,7 +676,8 @@ public class Checks
 	{
 		// Write the bash script to sanitize the file
 		File bash = new File(user.getParent(), "san.sh");
-		if (bash.isFile()) bash.delete();
+		if (bash.isFile())
+			bash.delete();
 		PrintStream bashWriter = null;
 		try {
 			bash.createNewFile();
@@ -734,11 +795,14 @@ public class Checks
 						if (line.contains(":|:")) {
 							String[] commentStart = line.split("\\:\\|\\:");
 							title.append(commentStart[0]);
-							if (commentStart.length == 2) body.append(commentStart[1]);
+							if (commentStart.length == 2)
+								body.append(commentStart[1]);
 							breakFound = true;
 						} else {
-							if (breakFound) body.append(line);
-							else title.append(line);
+							if (breakFound)
+								body.append(line);
+							else
+								title.append(line);
 						}
 					}
 				}
@@ -758,8 +822,10 @@ public class Checks
 
 		public StreamPrinter(int streamType, BufferedReader stream, int numTabs, int errorType)
 		{
-			if (streamType == 1) writer = out;
-			else if (streamType == 2) writer = err;
+			if (streamType == 1)
+				writer = out;
+			else if (streamType == 2)
+				writer = err;
 			this.stream = stream;
 			errorLevel = errorType;
 			tabs = "";
@@ -780,9 +846,11 @@ public class Checks
 					boolean streamWrote = false;
 					while ((line = stream.readLine()) != null) {
 						// If this line is empty or whitespace, continue
-						if (line.trim().isEmpty()) continue;
+						if (line.trim().isEmpty())
+							continue;
 						writer.println(tabs + line);
-						if (!streamWrote) streamWrote = true;
+						if (!streamWrote)
+							streamWrote = true;
 					}
 					streamFindings = new boolean[] {streamWrote};
 				} else {
@@ -790,9 +858,11 @@ public class Checks
 					boolean leakErr = false;
 					while ((line = stream.readLine()) != null) {
 						// There was no memory error
-						if (line.contains("ERROR SUMMARY: 0")) memErr = false;
+						if (line.contains("ERROR SUMMARY: 0"))
+							memErr = false;
 						// There were leaks
-						if (line.contains("LEAK SUMMARY:")) leakErr = true;
+						if (line.contains("LEAK SUMMARY:"))
+							leakErr = true;
 						err.println(tabs + line);
 					}
 					streamFindings = new boolean[] {memErr, leakErr};

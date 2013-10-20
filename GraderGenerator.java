@@ -61,6 +61,13 @@ public class GraderGenerator
 		do {
 			System.out.print(partName + ") Executable name: ");
 			answers.put("exec", in.nextLine());
+			do {
+				System.out.print(partName
+					+ ") Should this program have a time limit (in seconds) [0]: ");
+				answers.put("limit", in.nextLine());
+			} while (!isIntegerOrEmpty(answers.get("limit")));
+			System.out.print(partName + ") Should this program read input from a file []: ");
+			answers.put("input-file", in.nextLine());
 			System.out
 				.print("Do you want to run scripts/programs at various points during testing [n]: ");
 			String divergent = in.nextLine();
@@ -70,7 +77,7 @@ public class GraderGenerator
 				System.out.print("Script to run after building []: ");
 				answers.put("script-after-building", in.nextLine());
 				System.out.print("Script to run during execution []: ");
-				answers.put("script-during", in.nextLine());
+				answers.put("script-during-run", in.nextLine());
 				System.out.print("Script to run after execution []: ");
 				answers.put("script-after-run", in.nextLine());
 				System.out.print("Script to run after cleaning []: ");
@@ -203,15 +210,15 @@ public class GraderGenerator
 	private void buildScript(int threads, boolean checkGit,
 		LinkedList<LinkedHashMap<String, String>> answerList)
 	{
-		File graderFile = new File("Grader.java");
+		File graderFile = new File(new File("src"), "Grader.java");
 		if (graderFile.exists())
 			if (!graderFile.delete())
 				System.exit(1);
-		PrintWriter gradeWriter = null;
+		PrintWriter gw = null;
 		try {
 			if (!graderFile.createNewFile())
 				System.exit(1);
-			gradeWriter = new PrintWriter(new FileOutputStream(graderFile), true);
+			gw = new PrintWriter(new FileOutputStream(graderFile), true);
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 			System.exit(1);
@@ -221,13 +228,15 @@ public class GraderGenerator
 		}
 
 		// Print out the imports
-		gradeWriter.println("import java.io.File;\n" + "import java.io.FileOutputStream;\n"
-			+ "import java.io.FilenameFilter;\n" + "import java.io.IOException;\n"
-			+ "import java.io.PrintStream;\n" + "import java.util.Timer;\n"
-			+ "import java.util.concurrent.ConcurrentLinkedQueue;\n"
-			+ "import java.util.concurrent.Executors;");
+		gw.println("import java.io.File;\n" + "import java.io.FileOutputStream;\n"
+			+ "import java.io.IOException;\n" + "import java.io.PrintStream;\n"
+			+ "import java.util.Timer;\n" + "import java.util.concurrent.ConcurrentLinkedQueue;\n"
+			+ "import java.util.concurrent.Executors;\n" + "import java.nio.file.CopyOption;\n"
+			+ "import java.nio.file.Files;\n" + "import java.nio.file.Path;\n"
+			+ "import java.nio.file.StandardCopyOption;\n"
+			+ "import java.util.concurrent.atomic.AtomicInteger;");
 		// Print out the static, single-threaded portion
-		gradeWriter.println("public class Grader\n" + "{\n"
+		gw.println("public class Grader\n" + "{\n"
 			+ "AtomicInteger counter = new AtomicInteger(0);\n"
 			+ "public Grader(String root, int threads)\n" + "{\n"
 			+ "Checks.exec = Executors.newFixedThreadPool(2 * threads + 2);\n"
@@ -243,54 +252,243 @@ public class GraderGenerator
 			+ "} catch (InterruptedException e) {\n" + "e.printStackTrace();\n" + "}\n"
 			+ "Checks.exec.shutdown();\n" + "}");
 		// Print out the main method
-		gradeWriter.println("public static void main(String[] args)\n" + "{\n"
-			+ "new GraderMT(\"./\", " + threads + ");\n" + "}");
+		gw.println("public static void main(String[] args)\n" + "{\n" + "new GraderMT(\"./\", "
+			+ threads + ");\n" + "}");
+		// Print out the folder delete method
+		gw.println("private void deleteFolder(File source)\n" + "{\n"
+			+ "File[] contents = source.listFiles();\n" + "for (File f : contents) {\n"
+			+ "if (f.getName().equals(\".\") || f.getName().equals(\"..\"))\n" + "continue;\n"
+			+ "if (f.isDirectory())\n" + "deleteFolder(f);\n" + "else\n" + "f.delete();\n" + "}\n"
+			+ "source.delete();\n" + "}");
+		// Print out the symlink method
+		gw.println("public void symlink(File src, File dest, Checks check)\n" + "{\n"
+			+ "File[] srcFiles = src.listFiles();\n" + "for (File f : srcFiles) {\n"
+			+ "if (f.getName().equals(dest.getName()) || f.getName().equals(\"Makefile\"))\n"
+			+ "continue;\n" + "check.jockeyCommand(dest, \"ln -s ../\" + f.getName(), null);\n"
+			+ "}\n" + "}");
+		// Print out the copy folder method
+		gw.println("public void copyFiles(File src, File dest)\n" + "{\n" + "Path from;\n"
+			+ "Path to;\n" + "CopyOption[] options =\n"
+			+ "new CopyOption[] {StandardCopyOption.REPLACE_EXISTING,\n"
+			+ "StandardCopyOption.COPY_ATTRIBUTES};\n" + "File[] srcFiles = src.listFiles();\n"
+			+ "for (File f : srcFiles) {\n"
+			+ "if (f.getName().equals(\".\") || f.getName().equals(\"..\")) {\n" + "continue;\n"
+			+ "} else if (f.isDirectory()) {\n" + "File newDir = new File(dest, f.getName());\n"
+			+ "newDir.mkdir();\n" + "copyFiles(f, newDir);\n" + "} else {\n"
+			+ "from = src.toPath();\n" + "to = new File(dest, f.getName()).toPath();\n" + "try {\n"
+			+ "Files.copy(from, to, options);\n" + "} catch (IOException e) {\n"
+			+ "e.printStackTrace();\n" + "}\n" + "}\n" + "}\n" + "}");
 
 		// Now for GraderWorker
-		gradeWriter
-			.println("class GraderWorker implements Runnable\n"
-				+ "{\n"
-				+ "PrintStream out;\n"
-				+ "PrintStream err;\n"
-				+ "int number;\n"
-				+ "ConcurrentLinkedQueue<File> uniDirs;\n"
-				+ "public GraderWorker(ConcurrentLinkedQueue<File> queue, int number)\n"
-				+ "{\n"
-				+ "uniDirs = queue;\n"
-				+ "this.number = number;\n"
-				+ "}\n"
-				+ "@Override\n"
-				+ "public void run()\n"
-				+ "{\n"
-				+ "File student = null;\n"
-				+ "while ((student = uniDirs.poll()) != null) {\n"
-				+ "Checks check = null;\n"
-				+ "System.out.println(\"Grader \" + number + \": Verifying \" + student.getName() + \"...\");\n"
-				+ "File results = new File(student, \"GRADE_RESULTS.txt\");\n" + "try {\n"
-				+ "if (results.isFile())\n" + "results.delete();\n" + "results.createNewFile();\n"
-				+ "check = new Checks(results, number);\n" + "} catch (IOException e) {\n"
-				+ "System.err.println(\"Unable to redirect output to file\");\n"
-				+ "e.printStackTrace();\n" + "}\n" + "\n"
-				+ "// This class uses its own streams for reading and writing.\n"
-				+ "File summary = new File(student, \"SUMMARY.txt\");\n" + "try {\n"
-				+ "if (summary.isFile())\n" + "summary.delete();\n" + "summary.createNewFile();\n"
-				+ "FileOutputStream summaryStream = new FileOutputStream(summary);\n"
-				+ "out = new PrintStream(summaryStream);\n"
-				+ "err = new PrintStream(summaryStream);\n" + "} catch (IOException e) {\n"
-				+ "System.err.println(\"Unable to redirect output to file.\");\n"
-				+ "e.printStackTrace();\n" + "}");
+		gw.println("class GraderWorker implements Runnable\n"
+			+ "{\n"
+			+ "PrintStream out;\n"
+			+ "PrintStream err;\n"
+			+ "int number;\n"
+			+ "ConcurrentLinkedQueue<File> uniDirs;\n"
+			+ "public GraderWorker(ConcurrentLinkedQueue<File> queue, int number)\n"
+			+ "{\n"
+			+ "uniDirs = queue;\n"
+			+ "this.number = number;\n"
+			+ "}\n"
+			+ "@Override\n"
+			+ "public void run()\n"
+			+ "{\n"
+			+ "File student = null;\n"
+			+ "while ((student = uniDirs.poll()) != null) {\n"
+			+ "Checks check = null;\n"
+			+ "System.out.println(\"Grader \" + number + \": Verifying \" + student.getName() + \"...\");\n"
+			+ "File results = new File(student, \"GRADE_RESULTS.txt\");\n" + "try {\n"
+			+ "if (results.isFile())\n" + "results.delete();\n" + "results.createNewFile();\n"
+			+ "check = new Checks(results, number);\n" + "} catch (IOException e) {\n"
+			+ "System.err.println(\"Unable to redirect output to file\");\n"
+			+ "e.printStackTrace();\n" + "}\n"
+			+ "File summary = new File(student, \"SUMMARY.txt\");\n" + "try {\n"
+			+ "if (summary.isFile())\n" + "summary.delete();\n" + "summary.createNewFile();\n"
+			+ "FileOutputStream summaryStream = new FileOutputStream(summary);\n"
+			+ "out = new PrintStream(summaryStream);\n" + "err = new PrintStream(summaryStream);\n"
+			+ "} catch (IOException e) {\n"
+			+ "System.err.println(\"Unable to redirect output to file.\");\n"
+			+ "e.printStackTrace();\n" + "}");
 
 		// Checking git commits
 		if (checkGit) {
-			gradeWriter.println("boolean goodCommit = check.checkGitCommits(student);\n"
+			gw.println("boolean goodCommit = check.checkGitCommits(student);\n"
 				+ "if (goodCommit)\n" + "out.println(student.getName() + \" GIT+\");\n" + "else\n"
 				+ "err.println(student.getName() + \" GIT-\");");
 		}
 
-		// The final semicolon
-		gradeWriter.println("}");
+		// Set any persistent variables
+		gw.println("File partDir;");
+		gw.println("File partDep;");
+		gw.println("boolean[] badProgram;");
+		gw.println("boolean cleanWorked;");
+		gw.println("boolean goodMake;");
+		// For each part...
+		int partNum = 1;
+		String exec;
+		for (LinkedHashMap<String, String> answer : answerList) {
+			exec = answer.get("exec");
+			// Set the current part directory to here
+			gw.println("partDir = new File(student, \"part" + partNum + "\");");
+			// Inidicate that we're checking this part
+			gw.println("check.printMessage(\"\\n" + answer.get("exec") + " verification:\", 1);");
+
+			// Pre build script
+			String script = answer.get("script-before-building");
+			if (script != null && !script.isEmpty()) {
+				gw.println("runCommand(partDir, \"" + script + "\", null, 0);");
+			}
+
+			// Build any dependencies before hand
+			String dep = answer.get("dependencies");
+			if (!dep.isEmpty()) {
+				gw.println("check.printMessage(\"===Building dependencies for part" + partNum
+					+ "===\", 1);");
+				String[] depArr = dep.split(",");
+				for (String partDep : depArr) {
+					int num = Integer.parseInt(partDep.trim());
+					gw.println("partDep = new File(student, \"part" + num + "\");");
+					gw.println("check.checkMake(partDep, \"" + answerList.get(num - 1).get("exec")
+						+ "\");");
+				}
+				gw.println("check.printMessage(\"===Dependencies built===\", 1);");
+			}
+
+			// Build
+			gw.println("goodMake = check.checkMake(partDir, \"" + exec + "\");\n"
+				+ "if (goodMake)\n" + "out.println(student.getName() + \" " + exec
+				+ ": make+\");\n" + "else\n" + "err.println(student.getName() + \" " + exec
+				+ ": make-\");");
+
+			// Post build script
+			script = answer.get("script-after-building");
+			if (script != null && !script.isEmpty()) {
+				gw.println("runCommand(partDir, \"" + script + "\", null, 0);");
+			}
+
+			// Run tests
+			String args = answer.get("args");
+			if (args.isEmpty()) {
+				gw.println(buildCommand(exec, "", answer.get("input-file"), answer.get("limit"))
+					+ "\n" + "if (badProgram[0])\n" + "err.println(student.getName() + \" " + exec
+					+ ": memory error-\");\n" + "else\n" + "out.println(student.getName() + \" "
+					+ exec + ": memory error+\");\n" + "if (badProgram[1])\n"
+					+ "err.println(student.getName() + \" " + exec + ": leak error-\");\n"
+					+ "else\n" + "out.println(student.getName() + \" " + exec + ": leak error+\");");
+				script = answer.get("script-during-run");
+				if (script != null && !script.isEmpty()) {
+					gw.println("runCommand(partDir, \"" + script + "\", null, 0);");
+				}
+			} else {
+				String[] argsArr = args.split("\\|\\|");
+				int run = 0;
+				for (String arg : argsArr) {
+					gw.println("out.println(\"Test " + (run++) + ":\");");
+					gw.println(buildCommand(exec, arg, answer.get("input-file"),
+						answer.get("limit"))
+						+ "\n"
+						+ "if (badProgram[0])\n"
+						+ "err.println(student.getName() + \" "
+						+ exec
+						+ ": memory error-\");\n"
+						+ "else\n"
+						+ "out.println(student.getName() + \" "
+						+ exec
+						+ ": memory error+\");\n"
+						+ "if (badProgram[1])\n"
+						+ "err.println(student.getName() + \" "
+						+ exec
+						+ ": leak error-\");\n"
+						+ "else\n"
+						+ "out.println(student.getName() + \" "
+						+ exec + ": leak error+\");");
+					script = answer.get("script-during-run");
+					if (script != null && !script.isEmpty()) {
+						gw.println("runCommand(partDir, \"" + script + "\", null, 0);");
+					}
+				}
+			}
+
+			// Additional drivers
+			if (answer.get("driver-dir") != null)
+				runDrivers(gw, answer);
+
+			// Post run script
+			script = answer.get("script-after-run");
+			if (script != null && !script.isEmpty()) {
+				gw.println("runCommand(partDir, \"" + script + "\", null, 0);");
+			}
+
+			// Clean up
+			gw.println("cleanWorked = check.checkMakeClean(partDir, \"" + exec + "\");\n"
+				+ "if (cleanWorked)\n" + "out.println(student.getName() + \" " + exec
+				+ ": make clean+\");\n" + "else\n" + "err.println(student.getName() + \" " + exec
+				+ ": make clean-\");");
+
+			// Post clean script
+			script = answer.get("script-after-cleaning");
+			if (script != null && !script.isEmpty()) {
+				gw.println("runCommand(partDir, \"" + script + "\", null, 0);");
+			}
+			partNum++;
+		}
+
+		// Announce that we're done
+		gw.println("check.shutdown();\n"
+			+ "System.out.println(\"Grader \" + number + \": done with \"+student.getName()+\".\");");
+
+		// The final brackets
+		gw.println("}\n}\n}\n}");
 		// Done
-		gradeWriter.close();
+		gw.close();
+	}
+
+	private void runDrivers(PrintWriter gw, LinkedHashMap<String, String> answer)
+	{
+		// Get the driver directory
+		String dirName = answer.get("driver-dir");
+		String driverExec = answer.get("driver-exec");
+		// Run the driver
+		gw.println("File dest = new File(partDir, \"" + dirName + "\");\n" + "if (dest.exists())\n"
+			+ "deleteFolder(dest);\n" + "dest.mkdirs();\n" + "symlink(partDir, dest, check);\n"
+			+ "File src = new File(\"" + dirName + "\");\n" + "copyFiles(src, dest);\n"
+			+ "goodMake = check.checkMake(dest, \"" + driverExec + "\");\n" + "if (goodMake)\n"
+			+ "out.println(student.getName() + \" -DRIVER- " + driverExec + ": make+\");\n"
+			+ "else\n" + "err.println(student.getName() + \" -DRIVER- " + driverExec
+			+ ": make-\");");
+		String[] execNames = driverExec.split(",\\ ");
+		for (String exec : execNames)
+			gw.println("badProgram = check.testCommand(dest, \"" + exec + "\", null, 0);\n"
+				+ "if (badProgram[0])\n" + "err.println(student.getName() + \" -DRIVER- " + exec
+				+ ": memory error-\");\n" + "else\n"
+				+ "out.println(student.getName() + \" -DRIVER- " + exec + ": memory error+\");\n"
+				+ "if (badProgram[1])\n" + "err.println(student.getName() + \" -DRIVER- " + exec
+				+ ": leak error-\");\n" + "else\n" + "out.println(student.getName() + \" -DRIVER- "
+				+ exec + ": leak error+\");");
+		gw.println("cleanWorked = check.checkMakeClean(dest, \"" + driverExec + "\");\n"
+			+ "if (cleanWorked)\n" + "out.println(student.getName() + \" -DRIVER- " + driverExec
+			+ ": make clean+\");\n" + "else\n" + "err.println(student.getName() + \" -DRIVER- "
+			+ driverExec + ": make clean-\");");
+	}
+
+	private String buildCommand(String exec, String args, String inputFile, String limit)
+	{
+		StringBuilder command =
+			new StringBuilder("badProgram = check.testCommand(partDir, \"" + exec);
+		if (!args.isEmpty())
+			command.append(" " + args + "\",");
+		else
+			command.append("\",");
+		if (!inputFile.isEmpty())
+			command.append(" new File(\"" + inputFile + "\"),");
+		else
+			command.append(" null,");
+		if (!limit.isEmpty())
+			command.append(" " + limit + ");");
+		else
+			command.append(" 0);");
+		return command.toString();
 	}
 
 	private String getValidDirectories(LinkedList<LinkedHashMap<String, String>> answerList)

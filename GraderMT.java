@@ -3,6 +3,10 @@ import java.io.FileOutputStream;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.file.CopyOption;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Timer;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
@@ -119,7 +123,7 @@ public class GraderMT
 
 				/** You can imagine replacing all instances of isort with whatever the executable for
 				 * the first project is called */
-				check.printMessage("\nMDB-Lookup-Server verification:", 0);
+				check.printMessage("\nMDB-Lookup-Server verification:", 1);
 				// mdb-lookup-server make verification //
 				boolean goodMake = check.checkMake(mdbDir, "mdb-lookup-server");
 				if (goodMake)
@@ -141,17 +145,19 @@ public class GraderMT
 					portNum = Integer.toString(8888 + counter.getAndAdd(1));
 				} while (!Checks.available(Integer.parseInt(portNum)));
 				System.out.println(Thread.currentThread() + ": port " + portNum + " is available");
-				// boolean[] badMdb =
-				// check.mdbTest(mdbDir, "mdb-lookup-server ../../mdb-cs3157 " + portNum, mdbin,
-				// portNum);
-				// // are there memory errors?
-				// if (badMdb[0]) err.println(student.getName() +
-				// " mdb-lookup-server: memory error-");
-				// else out.println(student.getName() + " mdb-lookup-server: memory error+");
-				// // are there memory leaks?
-				// if (badMdb[1]) err.println(student.getName() +
-				// " mdb-lookup-server: leak error-");
-				// else out.println(student.getName() + " mdb-lookup-server: leak error+");
+				boolean[] badMdb =
+					check.mdbTest(mdbDir, "mdb-lookup-server ../../mdb-cs3157 " + portNum, null,
+						portNum);
+				// are there memory errors?
+				if (badMdb[0])
+					err.println(student.getName() + " mdb-lookup-server: memory error-");
+				else
+					out.println(student.getName() + " mdb-lookup-server: memory error+");
+				// are there memory leaks?
+				if (badMdb[1])
+					err.println(student.getName() + " mdb-lookup-server: leak error-");
+				else
+					out.println(student.getName() + " mdb-lookup-server: leak error+");
 				// end mdb-lookup-server verification //
 
 				// mdb-lookup-server make clean verification //
@@ -161,6 +167,41 @@ public class GraderMT
 					out.println(student.getName() + " mdb-lookup-server: make clean+");
 				else
 					err.println(student.getName() + " mdb-lookup-server: make clean-");
+
+				File dest = new File(mdbDir, "driver");
+				if (dest.exists())
+					deleteFolder(dest);
+				dest.mkdirs();
+				// Symlink the files in the folder above to this folder
+				symlink(mdbDir, dest, check);
+				File src = null;
+				// Copy the files from driver to here
+				copyFiles(src, dest);
+				// Make this directory
+				goodMake = check.checkMake(dest, "mdb-lookup-server");
+				if (goodMake)
+					out.println(student.getName() + " -DRIVER- mdb-lookup-server: make+");
+				else
+					err.println(student.getName() + " -DRIVER- mdb-lookup-server: make-");
+				// Run this directory
+				badMdb = check.testCommand(dest, "mdb-lookup-server", null, 0);
+				// are there memory errors?
+				if (badMdb[0])
+					err.println(student.getName() + " -DRIVER- mdb-lookup-server: memory error-");
+				else
+					out.println(student.getName() + " -DRIVER- mdb-lookup-server: memory error+");
+				// are there memory leaks?
+				if (badMdb[1])
+					err.println(student.getName() + " -DRIVER- mdb-lookup-server: leak error-");
+				else
+					out.println(student.getName() + " -DRIVER- mdb-lookup-server: leak error+");
+				// Clean this directory
+				cleanWorked = check.checkMakeClean(dest, "mdb-lookup-server");
+				if (cleanWorked)
+					out.println(student.getName() + " -DRIVER- mdb-lookup-server: make clean+");
+				else
+					err.println(student.getName() + " -DRIVER- mdb-lookup-server: make clean-");
+
 				// end isort make clean verification //
 
 				/** Everything here is the same as before. The only difference is the command
@@ -239,6 +280,20 @@ public class GraderMT
 				System.out.println(Thread.currentThread() + ": done.");
 			}
 		}
+
+		private void deleteFolder(File source)
+		{
+			File[] contents = source.listFiles();
+			for (File f : contents) {
+				if (f.getName().equals(".") || f.getName().equals(".."))
+					continue;
+				if (f.isDirectory())
+					deleteFolder(f);
+				else
+					f.delete();
+			}
+			source.delete();
+		}
 	}
 
 	public static void main(String[] args)
@@ -252,6 +307,43 @@ public class GraderMT
 			new GraderMT("lab6/lab6_grade", threads);
 		} catch (Exception e) {
 			e.printStackTrace();
+		}
+	}
+
+	public void copyFiles(File src, File dest)
+	{
+		Path from;
+		Path to;
+		CopyOption[] options =
+			new CopyOption[] {StandardCopyOption.REPLACE_EXISTING,
+				StandardCopyOption.COPY_ATTRIBUTES};
+		File[] srcFiles = src.listFiles();
+		for (File f : srcFiles) {
+			if (f.getName().equals(".") || f.getName().equals("..")) {
+				continue;
+			} else if (f.isDirectory()) {
+				File newDir = new File(dest, f.getName());
+				newDir.mkdir();
+				copyFiles(f, newDir);
+			} else {
+				from = src.toPath();
+				to = new File(dest, f.getName()).toPath();
+				try {
+					Files.copy(from, to, options);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+	}
+
+	public void symlink(File src, File dest, Checks check)
+	{
+		File[] srcFiles = src.listFiles();
+		for (File f : srcFiles) {
+			if (f.getName().equals(dest.getName()) || f.getName().equals("Makefile"))
+				continue;
+			check.jockeyCommand(dest, "ln -s ../" + f.getName(), null);
 		}
 	}
 
