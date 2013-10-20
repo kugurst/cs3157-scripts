@@ -348,7 +348,7 @@ public class GraderGenerator
 			// Pre build script
 			String script = answer.get("script-before-building");
 			if (script != null && !script.isEmpty()) {
-				gw.println("runCommand(partDir, \"" + script + "\", null, 0);");
+				gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
 			}
 
 			// Build any dependencies before hand
@@ -375,7 +375,7 @@ public class GraderGenerator
 			// Post build script
 			script = answer.get("script-after-building");
 			if (script != null && !script.isEmpty()) {
-				gw.println("runCommand(partDir, \"" + script + "\", null, 0);");
+				gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
 			}
 
 			// Run tests
@@ -389,7 +389,7 @@ public class GraderGenerator
 					+ "else\n" + "out.println(student.getName() + \" " + exec + ": leak error+\");");
 				script = answer.get("script-during-run");
 				if (script != null && !script.isEmpty()) {
-					gw.println("runCommand(partDir, \"" + script + "\", null, 0);");
+					gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
 				}
 			} else {
 				String[] argsArr = args.split("\\|\\|");
@@ -416,7 +416,7 @@ public class GraderGenerator
 						+ exec + ": leak error+\");");
 					script = answer.get("script-during-run");
 					if (script != null && !script.isEmpty()) {
-						gw.println("runCommand(partDir, \"" + script + "\", null, 0);");
+						gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
 					}
 				}
 			}
@@ -428,7 +428,7 @@ public class GraderGenerator
 			// Post run script
 			script = answer.get("script-after-run");
 			if (script != null && !script.isEmpty()) {
-				gw.println("runCommand(partDir, \"" + script + "\", null, 0);");
+				gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
 			}
 
 			// Clean up
@@ -454,7 +454,7 @@ public class GraderGenerator
 			// Post clean script
 			script = answer.get("script-after-cleaning");
 			if (script != null && !script.isEmpty()) {
-				gw.println("runCommand(partDir, \"" + script + "\", null, 0);");
+				gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
 			}
 			partNum++;
 		}
