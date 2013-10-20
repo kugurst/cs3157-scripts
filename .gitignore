@@ -1,6 +1,11 @@
+# Object files
+*.class
+
 # Scratch files
 Scratch*.java
 
 # Miscellaneous
 Combo.java
 test.txt
+Grader.java
+GraderMT.java
