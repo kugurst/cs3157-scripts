@@ -5,6 +5,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.lang.reflect.Field;
@@ -137,12 +138,10 @@ public class Checks
 			else
 				out.println("\tTesting: " + command + " with " + inputFile.getName());
 
-			ProcessBuilder pb = new ProcessBuilder("valgrind --leak-check=yes ./" + command);
-			pb.directory(workingDir);
+			Process proc = runtime.exec("valgrind --leak-check=yes ./" + command, null, workingDir);
 			// If we have an input file, feed that to the process
 			if (inputFile != null)
-				pb.redirectInput(inputFile);
-			Process proc = pb.start();
+				exec.execute(new LineFeeder(proc.getOutputStream(), inputFile));
 			System.out.println("Grader " + number + ": started " + commandName);
 			currProc = proc;
 
@@ -196,15 +195,13 @@ public class Checks
 
 	public int jockeyCommand(File workingDir, String command, File inputFile)
 	{
-		ProcessBuilder pb = new ProcessBuilder(command);
-		pb.directory(workingDir);
-		if (inputFile != null)
-			pb.redirectInput(inputFile);
-		Process proc;
 		int retVal = -1;
 		try {
-			proc = pb.start();
+			Process proc = runtime.exec(command, null, workingDir);
 			currProc = proc;
+			// Feed the file
+			if (inputFile != null)
+				exec.execute(new LineFeeder(proc.getOutputStream(), inputFile));
 			// Get the process streams
 			new StreamGobbler(proc.getInputStream());
 			new StreamGobbler(proc.getErrorStream());
@@ -222,15 +219,11 @@ public class Checks
 	{
 		String commandName = command.split("\\ ")[0];
 		out.println("====Custom command:+" + commandName + "====");
-		// Set the process parameters
-		ProcessBuilder pb = new ProcessBuilder(command);
-		pb.directory(workingDir);
-		if (inputFile != null)
-			pb.redirectInput(inputFile);
-		Process proc;
 		int retVal = -1;
 		try {
-			proc = pb.start();
+			Process proc = runtime.exec(command, null, workingDir);
+			if (inputFile != null)
+				exec.execute(new LineFeeder(proc.getOutputStream(), inputFile));
 			currProc = proc;
 			// Get the process streams
 			final BufferedReader stdout =
@@ -892,6 +885,27 @@ public class Checks
 			killProcess();
 			System.err.println("Grader " + number + ": killed " + commandName);
 			out.println("\nKilled " + commandName + ". Rerun to see if it behaves itself.");
+		}
+	}
+
+	private class LineFeeder implements Runnable
+	{
+		PrintWriter	stdin;
+		Scanner		reader;
+
+		public LineFeeder(OutputStream processStdin, File inputFile) throws FileNotFoundException
+		{
+			stdin = new PrintWriter(processStdin, true);
+			reader = new Scanner(inputFile);
+		}
+
+		@Override
+		public void run()
+		{
+			while (reader.hasNextLine())
+				stdin.println(reader.nextLine());
+			reader.close();
+			stdin.close();
 		}
 	}
 }

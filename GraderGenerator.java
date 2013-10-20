@@ -1,4 +1,5 @@
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -35,6 +36,11 @@ public class GraderGenerator
 	// This class will ask a series of questions to construct a Grader Script
 	public GraderGenerator()
 	{
+		try {
+			System.setIn(new FileInputStream(new File("lab3.txt")));
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
 		in = new Scanner(System.in);
 		partAnswers = new LinkedList<LinkedHashMap<String, String>>();
 		int threads = getThreads();
@@ -204,7 +210,7 @@ public class GraderGenerator
 	private void buildScript(int threads, boolean checkGit,
 		LinkedList<LinkedHashMap<String, String>> answerList)
 	{
-		File graderFile = new File("Grader.java");
+		File graderFile = new File("src", "Grader.java");
 		if (graderFile.exists())
 			if (!graderFile.delete())
 				System.exit(1);
@@ -233,7 +239,7 @@ public class GraderGenerator
 		gw.println("public class Grader\n" + "{\n"
 			+ "AtomicInteger counter = new AtomicInteger(0);\n"
 			+ "public Grader(String root, int threads)\n" + "{\n"
-			+ "Checks.exec = Executors.newFixedThreadPool(2 * threads + 2);\n"
+			+ "Checks.exec = Executors.newFixedThreadPool(3 * threads + 3);\n"
 			+ "Checks.tmArr = new Timer[threads];\n" + "Timer[] tmArr = Checks.tmArr;\n"
 			+ "for (int j = 0; j < tmArr.length; j++)\n" + "tmArr[j] = new Timer(true);\n"
 			+ "File rootDir = new File(root);\n"
@@ -269,7 +275,7 @@ public class GraderGenerator
 			+ "if (f.getName().equals(\".\") || f.getName().equals(\"..\")) {\n" + "continue;\n"
 			+ "} else if (f.isDirectory()) {\n" + "File newDir = new File(dest, f.getName());\n"
 			+ "newDir.mkdir();\n" + "copyFiles(f, newDir);\n" + "} else {\n"
-			+ "from = src.toPath();\n" + "to = new File(dest, f.getName()).toPath();\n" + "try {\n"
+			+ "from = f.toPath();\n" + "to = new File(dest, f.getName()).toPath();\n" + "try {\n"
 			+ "Files.copy(from, to, options);\n" + "} catch (IOException e) {\n"
 			+ "e.printStackTrace();\n" + "}\n" + "}\n" + "}\n" + "}");
 
@@ -325,6 +331,10 @@ public class GraderGenerator
 			exec = answer.get("exec");
 			// Set the current part directory to here
 			gw.println("partDir = new File(student, \"part" + partNum + "\");");
+			// Preliminary clean
+			gw.println("out.println(\"===Preliminary make clean====\");");
+			gw.println("check.checkMakeClean(partDir, \"" + exec + "\");");
+			gw.println("out.println(\"=============================\");");
 			// Inidicate that we're checking this part
 			gw.println("check.printMessage(\"\\n" + answer.get("exec") + " verification:\", 1);");
 
@@ -420,6 +430,20 @@ public class GraderGenerator
 				+ ": make clean+\");\n" + "else\n" + "err.println(student.getName() + \" " + exec
 				+ ": make clean-\");");
 
+			// Clean up dependencies too
+			if (!dep.isEmpty()) {
+				gw.println("check.printMessage(\"===Cleaning dependencies for part" + partNum
+					+ "===\", 1);");
+				String[] depArr = dep.split(",");
+				for (String partDep : depArr) {
+					int num = Integer.parseInt(partDep.trim());
+					gw.println("partDep = new File(student, \"part" + num + "\");");
+					gw.println("check.checkMakeClean(partDep, \""
+						+ answerList.get(num - 1).get("exec") + "\");");
+				}
+				gw.println("check.printMessage(\"===Dependencies cleaned===\", 1);");
+			}
+
 			// Post clean script
 			script = answer.get("script-after-cleaning");
 			if (script != null && !script.isEmpty()) {
@@ -444,13 +468,17 @@ public class GraderGenerator
 		String dirName = answer.get("driver-dir");
 		String driverExec = answer.get("driver-exec");
 		// Run the driver
-		gw.println("File dest = new File(partDir, \"" + dirName + "\");\n" + "if (dest.exists())\n"
-			+ "deleteFolder(dest);\n" + "dest.mkdirs();\n" + "symlink(partDir, dest, check);\n"
-			+ "File src = new File(\"" + dirName + "\");\n" + "copyFiles(src, dest);\n"
-			+ "goodMake = check.checkMake(dest, \"" + driverExec + "\");\n" + "if (goodMake)\n"
-			+ "out.println(student.getName() + \" -DRIVER- " + driverExec + ": make+\");\n"
-			+ "else\n" + "err.println(student.getName() + \" -DRIVER- " + driverExec
-			+ ": make-\");");
+		gw.println("File dest = new File(partDir, \""
+			+ dirName
+			+ "\");\n"
+			+ "if (dest.exists())\n"
+			+ "deleteFolder(dest);\n"
+			+ "dest.mkdir();\n" // + "symlink(partDir, dest, check);\n"
+			+ "File src = new File(student.getParent(), \"" + dirName + "\");\n"
+			+ "copyFiles(src, dest);\n" + "goodMake = check.checkMake(dest, \"" + driverExec
+			+ "\");\n" + "if (goodMake)\n" + "out.println(student.getName() + \" -DRIVER- "
+			+ driverExec + ": make+\");\n" + "else\n"
+			+ "err.println(student.getName() + \" -DRIVER- " + driverExec + ": make-\");");
 		String[] execNames = driverExec.split(",\\ ");
 		for (String exec : execNames)
 			gw.println("badProgram = check.testCommand(dest, \"" + exec + "\", null, 0);\n"
