@@ -1,4 +1,5 @@
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -31,10 +32,18 @@ public class GraderGenerator
 	private Scanner										in;
 	//
 	private LinkedList<LinkedHashMap<String, String>>	partAnswers;
+	private boolean										TEST		= false;
 
 	// This class will ask a series of questions to construct a Grader Script
 	public GraderGenerator()
 	{
+		if (TEST) {
+			try {
+				System.setIn(new FileInputStream("lab3.txt"));
+			} catch (FileNotFoundException e) {
+				e.printStackTrace();
+			}
+		}
 		in = new Scanner(System.in);
 		partAnswers = new LinkedList<LinkedHashMap<String, String>>();
 		int threads = getThreads();
@@ -204,7 +213,11 @@ public class GraderGenerator
 	private void buildScript(int threads, boolean checkGit,
 		LinkedList<LinkedHashMap<String, String>> answerList)
 	{
-		File graderFile = new File("Grader.java");
+		File graderFile;
+		if (TEST)
+			graderFile = new File("src", "Grader.java");
+		else
+			graderFile = new File("Grader.java");
 		if (graderFile.exists())
 			if (!graderFile.delete())
 				System.exit(1);
@@ -326,9 +339,9 @@ public class GraderGenerator
 			// Set the current part directory to here
 			gw.println("partDir = new File(student, \"part" + partNum + "\");");
 			// Preliminary clean
-			gw.println("out.println(\"===Preliminary make clean====\");");
+			gw.println("check.printMessage(\"===Preliminary make clean====\", 1);");
 			gw.println("check.checkMakeClean(partDir, \"" + exec + "\");");
-			gw.println("out.println(\"=============================\");");
+			gw.println("check.printMessage(\"=============================\", 1);");
 			// Inidicate that we're checking this part
 			gw.println("check.printMessage(\"\\n" + answer.get("exec") + " verification:\", 1);");
 
@@ -462,6 +475,7 @@ public class GraderGenerator
 		String dirName = answer.get("driver-dir");
 		String driverExec = answer.get("driver-exec");
 		// Run the driver
+		gw.println("check.printMessage(\"====Testing additional driver====\", 1);");
 		gw.println("File dest = new File(partDir, \""
 			+ dirName
 			+ "\");\n"
@@ -486,6 +500,7 @@ public class GraderGenerator
 			+ "if (cleanWorked)\n" + "out.println(student.getName() + \" -DRIVER- " + driverExec
 			+ ": make clean+\");\n" + "else\n" + "err.println(student.getName() + \" -DRIVER- "
 			+ driverExec + ": make clean-\");");
+		gw.println("check.printMessage(\"=================================\", 1);");
 	}
 
 	private String buildCommand(String exec, String args, String inputFile, String limit)
