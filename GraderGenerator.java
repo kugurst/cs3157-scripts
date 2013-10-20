@@ -1,5 +1,4 @@
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -36,11 +35,6 @@ public class GraderGenerator
 	// This class will ask a series of questions to construct a Grader Script
 	public GraderGenerator()
 	{
-		try {
-			System.setIn(new FileInputStream(new File("lab3.txt")));
-		} catch (FileNotFoundException e) {
-			e.printStackTrace();
-		}
 		in = new Scanner(System.in);
 		partAnswers = new LinkedList<LinkedHashMap<String, String>>();
 		int threads = getThreads();
