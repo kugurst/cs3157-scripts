@@ -204,7 +204,7 @@ public class GraderGenerator
 	private void buildScript(int threads, boolean checkGit,
 		LinkedList<LinkedHashMap<String, String>> answerList)
 	{
-		File graderFile = new File(new File("src"), "Grader.java");
+		File graderFile = new File("Grader.java");
 		if (graderFile.exists())
 			if (!graderFile.delete())
 				System.exit(1);
