@@ -1,6 +1,9 @@
 # Object files
 *.class
 
+# Temp files
+*~
+
 # Scratch files
 Scratch*.java
 
