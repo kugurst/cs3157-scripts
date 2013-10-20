@@ -218,7 +218,7 @@ public class Checks
 	public int runCommand(File workingDir, String command, File inputFile, int limit)
 	{
 		String commandName = command.split("\\ ")[0];
-		out.println("====Custom command:+" + commandName + "====");
+		out.println("====Custom command:" + commandName + "====");
 		int retVal = -1;
 		try {
 			Process proc = runtime.exec(command, null, workingDir);
@@ -260,6 +260,7 @@ public class Checks
 				+ commandName + " to complete.");
 			e.printStackTrace();
 		}
+		out.println("===================" + commandName.replaceAll(".", "=") + "====");
 		currProc = null;
 		return retVal;
 	}
