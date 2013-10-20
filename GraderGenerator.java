@@ -246,7 +246,7 @@ public class GraderGenerator
 			+ "} catch (InterruptedException e) {\n" + "e.printStackTrace();\n" + "}\n"
 			+ "Checks.exec.shutdown();\n" + "}");
 		// Print out the main method
-		gw.println("public static void main(String[] args)\n" + "{\n" + "new GraderMT(\"./\", "
+		gw.println("public static void main(String[] args)\n" + "{\n" + "new Grader(\"./\", "
 			+ threads + ");\n" + "}");
 		// Print out the folder delete method
 		gw.println("private void deleteFolder(File source)\n" + "{\n"
