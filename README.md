@@ -69,5 +69,6 @@ To Do
  - Create an actual configuration file syntax.
 - Make procedures for labs like lab 6 and lab 7.
 - Allow multiple executables per part.
+- Generate a routine for a scoring script (will take the output of the running program, as well as the check results).
 - ETC.
 
