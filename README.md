@@ -1,24 +1,15 @@
-Mark's Multi-Threaded Grading Script
-====================================
+Mark's Multi-Threaded Grading Script Generator
+==============================================
 
 What Is It?
 -----------
 
-This is a Java grading script with ultimate extensibility. It's designed to be
-flexible enough to grade any kind of lab, but also powerful enough to almost
-completely automate the process. Even a lab like lab 7 can be automated using 
-the utilities provided by this script, as well as a little sh know how.
+This is a Java grading script generator with great extensibility. It's designed to be flexible enough to grade any kind of lab, but also powerful enough to almost completely automate the process. Even a lab like lab 7 can be automated using the utilities provided by this script, as well as a little sh know how.
 
 How Do I Use It?
 ----------------
 
-I must profess, in its current form, it's not very user friendly. To modify this 
-script to your needs, you must edit the run method of the `GraderWorker` class, 
-located in `GraderMT.java`. `Checks.java` is a utility class, but unlike
-`java.lang.Math`, it must be instantiated. Each GraderWorker should have its own
-`Checks` object, and only one. The `GraderWorker` class has been heavily
-commented to show how to use the commands that `Checks` provides, and `Checks`
-will eventually be commented.
+Just run GraderGenerator and answer the questions it gives you. Alternatively, you could just feed in a text file containing the answers
 
 How Do I Run It?
 ----------------

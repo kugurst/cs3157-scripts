@@ -103,7 +103,7 @@ public class Checks
 		for (File f : partDir.listFiles())
 			if (f.getName().endsWith(".o") || nameSet.contains(f.getName())
 				|| f.getName().compareTo("core") == 0 || f.getName().compareTo("a.out") == 0
-				|| f.getName().endsWith(".gch")) {
+				|| f.getName().endsWith(".gch") || f.getName().endsWith(".a")) {
 				f.delete();
 				cleanWorked = false;
 			}
@@ -271,7 +271,6 @@ public class Checks
 		Process makeProc = null;
 		if (!partDir.isDirectory())
 			return false;
-		final AtomicBoolean makeErr = new AtomicBoolean(false);
 
 		// Run the make
 		try {
@@ -326,7 +325,7 @@ public class Checks
 			}
 		}
 		// Compile the results
-		if (goodMake == 0 && foundExec && !makeErr.get())
+		if (goodMake == 0 && foundExec && !streamFindings[0])
 			return true;
 		return false;
 	}
