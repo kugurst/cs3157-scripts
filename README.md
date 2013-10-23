@@ -9,24 +9,31 @@ This is a Java grading script generator with great extensibility. It's designed 
 How Do I Use It?
 ----------------
 
-Just run GraderGenerator and answer the questions it gives you. Alternatively, you could just feed in a text file containing the answers
+Just compile and run `GraderGenerator.java` and answer the questions it poses. Alternatively, you could just feed in a text file containing the answers.
 
 How Do I Run It?
 ----------------
 
-After you're done making your changes, copy `GraderMT.java`, `Checks.java`,
-`StreamGobbler.java` to the root directory of students' lab directories. E.g.
+Once you're done answering the questions, the grading script produces a file called `Grader.java`. This file, along with `Checks.java` and `StreamGobbler.java` should be coppied to the root directory of the students' lab directories. E.g.:
 
 ```bash
 $ ls
-GraderMT.java   Checks.java StreamGobbler.java aaa1111  aaa2222 aaa3333
+Grader.java   Checks.java StreamGobbler.java aaa1111  aaa2222 aaa3333
 aaa4444 aaa5555...
 ```
 
-For more information on how to get the student directories into that form, take
-a look at `mboxer` (detail to come).
+Alternatively, you could just symlink `Checks.java` and `StreamGobbler.java`, as they are unlikely to undergo code-breaking changes as compared to `Grader.java` (e.g. someone else runs `GraderGenerator`).
 
-Then, just compile and run `GraderMT`.
+For more information on how to get the student directories into this form, take a look at `mboxer` (details to come).
+
+Then, just compile and run `Grader` (it takes no commandline arguments and requires no user interaction). A note, `Grader` requires Java 7. A distribution of Java 7 is located in the original script directory. To run it, you'll need to run:
+
+```bash
+~/grading/grading-scripts/mark-java-grading/jdk1.7.0_45/bin/java Grader
+```
+
+Until CLIC updates the Java runtime on the CLIC machines.
+
 
 Where Are the Results?
 ----------------------
@@ -35,24 +42,32 @@ The results of each student are located at the root of their directory. The
 result consists of two files:
 
 ### SUMMARY.txt
-Contains a simple "yes" or "no" to whether or not a student completed the basic
-tests as specified by the commands that `Check` ran. For example,
-`checkGitCommits` verifies if a student had at least 5 meaningful commits.
-`GraderWorker` takes the return of `checkGitCommits` and outputs a simple
-summary to `SUMMARY.txt`, while `checkGitCommits` outputted the actual commits
-to:
+Contains a simple "yes" or "no" to whether or not a student completed the basic tests as specified by the commands that `Check` ran (and interpreted by `Grader`. Take a look at some of the older commits of `GraderMT` for a clearer picture). For example, `checkGitCommits` verifies if a student had at least 5 meaningful commits. `Grader` takes the return of `checkGitCommits` and outputs a simple summary to `SUMMARY.txt`, while `checkGitCommits` outputted the actual commits to:
 
 ### GRADE_RESULT.txt
-Contains the output of each of the commands ran. Thus, you'll never actually
-need to test any of the student's code! It will test the code for you, and log
-the standard out and standard error of each process to file. `testCommand` lets
-you specify this behavior a bit.
+Contains the output of each of the commands ran. Thus, you'll never actually need to manually test any of the student's code (provided they named their executables and libraries properly)! It will test the code for you, and log the standard out and standard error of each process to file.
+
+Things You Can Do
+-----------------
+
+- Run scripts at various points during grading (building, execution, cleaning).
+- Automatically kill processes based on a time out.
+- Run executables with multiple command line arguments.
+- Run test drivers specified in a given folder.
+- Regex matching for gitCommits (that is, a match means it's a meaningless commit).
+- Make a program read input from a file.
+- Part dependencies
+- More to come!
 
 To Do
 -----
 
-- Finish cleaning up the code in `Checks.java`
-- Write a script to generate a `GraderMT.java` from user responses to questions.
-- Make `testCommand` more robust.
-- Javadoc-comment the `Checks.java`, correctly.
+- Finish cleaning up the code in `Checks.java`.
+- Pipe process standard out to simultaneously running script.
+- Provide more user options.
+ - Allow controlling of output level.
+ - Create an actual configuration file syntax.
+- Make procedures for labs like lab 6 and lab 7.
+- Allow multiple executables per part.
+- ETC.
 
