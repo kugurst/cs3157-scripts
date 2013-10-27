@@ -813,6 +813,15 @@ public class Checks
 		int				errorLevel;
 		String			tabs;
 
+		/** @param streamType
+		 *            - 1 for stdout, 2 for stderr
+		 * @param stream
+		 *            - The {@link BufferedReader} to read from
+		 * @param numTabs
+		 *            - The number of tabs to indent
+		 * @param errorType
+		 *            - The error logging checks. 0 for no checking, 1 for checking if the stream
+		 *            was writing to, 2 for valgrind checking */
 		public StreamPrinter(int streamType, BufferedReader stream, int numTabs, int errorType)
 		{
 			if (streamType == 1)

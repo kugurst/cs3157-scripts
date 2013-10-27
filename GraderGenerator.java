@@ -15,6 +15,8 @@ import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.yaml.snakeyaml.Yaml;
+
 public class GraderGenerator
 {
 	// A HashSet to quickly parse a "yes"
@@ -30,31 +32,68 @@ public class GraderGenerator
 
 	// Scanner to read user input
 	private Scanner										in;
-	//
+
 	private LinkedList<LinkedHashMap<String, String>>	partAnswers;
 	private boolean										TEST		= false;
 
 	// This class will ask a series of questions to construct a Grader Script
-	public GraderGenerator()
+	public GraderGenerator(String[] args)
 	{
-		if (TEST) {
-			try {
-				System.setIn(new FileInputStream("lab3.txt"));
-			} catch (FileNotFoundException e) {
-				e.printStackTrace();
-			}
+		if (args.length > 1) {
+			System.out.println("java GraderGenerator [lab.yaml]");
+			System.exit(2);
 		}
 		in = new Scanner(System.in);
 		partAnswers = new LinkedList<LinkedHashMap<String, String>>();
-		int threads = getThreads();
-		boolean checkGit = checkGit();
-		int parts = getParts();
-		for (int i = 0; i < parts; i++) {
-			LinkedHashMap<String, String> answers = new LinkedHashMap<String, String>();
-			partAnswers.add(answers);
-			partBuilder(answers, (i + 1));
+		if (args.length == 1)
+			loadConfig(new File(args[0]));
+		else {
+			if (TEST) {
+				try {
+					System.setIn(new FileInputStream("lab3.txt"));
+				} catch (FileNotFoundException e) {
+					e.printStackTrace();
+				}
+			}
+			int threads = getThreads();
+			boolean checkGit = checkGit();
+			int parts = getParts();
+			for (int i = 0; i < parts; i++) {
+				LinkedHashMap<String, String> answers = new LinkedHashMap<String, String>();
+				partAnswers.add(answers);
+				partBuilder(answers, (i + 1));
+			}
+			buildScript(threads, checkGit, partAnswers);
 		}
+	}
+
+	@SuppressWarnings ("unchecked")
+	private void loadConfig(File file)
+	{
+		Yaml yaml = new Yaml();
+		LinkedHashMap<String, Object> options = null;
+		try {
+			for (Object o : yaml.loadAll(new FileInputStream(file)))
+				options = (LinkedHashMap<String, Object>) o;
+		} catch (FileNotFoundException e) {
+			System.err.println("File \"" + file.getAbsolutePath() + "\" not found.");
+			System.exit(1);
+		}
+		int threads =
+			options.containsKey("threads") ? (Integer) options.remove("threads") : Runtime
+				.getRuntime().availableProcessors() / 2;
+		boolean checkGit =
+			options.containsKey("check-git") ? (Boolean) options.remove("check-git") : true;
+		configAnswers(options, partAnswers);
 		buildScript(threads, checkGit, partAnswers);
+		System.out.println(options);
+	}
+
+	private void configAnswers(LinkedHashMap<String, Object> options,
+		LinkedList<LinkedHashMap<String, String>> partAnswers)
+	{
+		// TODO Auto-generated method stub
+
 	}
 
 	private void partBuilder(HashMap<String, String> answers, int partNum)
@@ -203,11 +242,6 @@ public class GraderGenerator
 			if (!Character.isDigit(c))
 				return false;
 		return true;
-	}
-
-	public static void main(String[] args)
-	{
-		new GraderGenerator();
 	}
 
 	private void buildScript(int threads, boolean checkGit,
@@ -533,5 +567,10 @@ public class GraderGenerator
 				dirs.append(" && !f.getName().equalsIgnoreCase(\"" + dir + "\")");
 		}
 		return dirs.toString() + ")";
+	}
+
+	public static void main(String[] args)
+	{
+		new GraderGenerator(args);
 	}
 }
