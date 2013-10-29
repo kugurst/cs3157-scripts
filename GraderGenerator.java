@@ -337,13 +337,10 @@ public class GraderGenerator
 			gw.println("goodMake = check.checkMake(partDir, \"" + execNames + "\");");
 			printBuildChecks(gw, execNames);
 
-			// // Post build script
-			// script = answer.get("script-after-building");
-			// if (script != null && !script.isEmpty()) {
-			// gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
-			// }
-			//
-			// // Run tests
+			// Post build script
+			printRunScript(gw, (ArrayList<Object>) answer.get("script-after-building"));
+
+			// Run tests
 			// String args = answer.get("args");
 			// if (args.isEmpty()) {
 			// gw.println(buildCommand(exec, "", answer.get("input-file"), answer.get("limit"))
@@ -445,6 +442,12 @@ public class GraderGenerator
 			gw.println("if (goodMake[0])\n"
 				+ "out.println(student.getName() + \" Overall make: make+\");\n" + "else\n"
 				+ "err.println(student.getName() + \" Overall make: make-\");");
+			int pos = 1;
+			for (String name : nameArr) {
+				gw.println("if (goodMake[" + (pos++) + "])\n"
+					+ "out.println(student.getName() + \" " + name + ": make+\");\n" + "else\n"
+					+ "err.println(student.getName() + \" " + name + ": make-\");");
+			}
 		}
 	}
 
