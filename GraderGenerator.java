@@ -15,8 +15,6 @@ import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.yaml.snakeyaml.Yaml;
-
 public class GraderGenerator
 {
 	// A HashSet to quickly parse a "yes"
@@ -45,9 +43,12 @@ public class GraderGenerator
 		}
 		in = new Scanner(System.in);
 		partAnswers = new LinkedList<LinkedHashMap<String, String>>();
-		if (args.length == 1)
-			loadConfig(new File(args[0]));
-		else {
+		if (args.length == 1) {
+			LinkedHashMap<String, Object> options = ConfigParser.loadConfig(new File(args[0]));
+			Object params[] = ConfigParser.parseConfig(options, partAnswers);
+			buildScript((Integer) params[0], (Boolean) params[1], partAnswers);
+			System.out.println(options);
+		} else {
 			if (TEST) {
 				try {
 					System.setIn(new FileInputStream("lab3.txt"));
@@ -65,35 +66,6 @@ public class GraderGenerator
 			}
 			buildScript(threads, checkGit, partAnswers);
 		}
-	}
-
-	@SuppressWarnings ("unchecked")
-	private void loadConfig(File file)
-	{
-		Yaml yaml = new Yaml();
-		LinkedHashMap<String, Object> options = null;
-		try {
-			for (Object o : yaml.loadAll(new FileInputStream(file)))
-				options = (LinkedHashMap<String, Object>) o;
-		} catch (FileNotFoundException e) {
-			System.err.println("File \"" + file.getAbsolutePath() + "\" not found.");
-			System.exit(1);
-		}
-		int threads =
-			options.containsKey("threads") ? (Integer) options.remove("threads") : Runtime
-				.getRuntime().availableProcessors() / 2;
-		boolean checkGit =
-			options.containsKey("check-git") ? (Boolean) options.remove("check-git") : true;
-		configAnswers(options, partAnswers);
-		buildScript(threads, checkGit, partAnswers);
-		System.out.println(options);
-	}
-
-	private void configAnswers(LinkedHashMap<String, Object> options,
-		LinkedList<LinkedHashMap<String, String>> partAnswers)
-	{
-		// TODO Auto-generated method stub
-
 	}
 
 	private void partBuilder(HashMap<String, String> answers, int partNum)
