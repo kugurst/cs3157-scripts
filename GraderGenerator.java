@@ -1,5 +1,4 @@
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -18,7 +17,7 @@ import java.util.regex.Pattern;
 public class GraderGenerator
 {
 	// A HashSet to quickly parse a "yes"
-	static HashSet<String>								possibleYes	= new HashSet<String>();
+	static HashSet<String>	possibleYes	= new HashSet<String>();
 	static {
 		possibleYes.add("Yes");
 		possibleYes.add("yes");
@@ -29,43 +28,25 @@ public class GraderGenerator
 	}
 
 	// Scanner to read user input
-	private Scanner										in;
+	private Scanner			in;
+	private Boolean			TEST		= true;
 
-	private LinkedList<LinkedHashMap<String, String>>	partAnswers;
-	private boolean										TEST		= false;
+	Pattern					numberPat	= Pattern.compile("\\d+");
 
 	// This class will ask a series of questions to construct a Grader Script
 	public GraderGenerator(String[] args)
 	{
-		if (args.length > 1) {
-			System.out.println("java GraderGenerator [lab.yaml]");
+		if (args.length != 1) {
+			System.out.println("java GraderGenerator <lab.yaml>");
 			System.exit(2);
 		}
-		in = new Scanner(System.in);
-		partAnswers = new LinkedList<LinkedHashMap<String, String>>();
-		if (args.length == 1) {
-			LinkedHashMap<String, Object> options = ConfigParser.loadConfig(new File(args[0]));
-			Object params[] = ConfigParser.parseConfig(options, partAnswers);
-			buildScript((Integer) params[0], (Boolean) params[1], partAnswers);
-			System.out.println(options);
-		} else {
-			if (TEST) {
-				try {
-					System.setIn(new FileInputStream("lab3.txt"));
-				} catch (FileNotFoundException e) {
-					e.printStackTrace();
-				}
-			}
-			int threads = getThreads();
-			boolean checkGit = checkGit();
-			int parts = getParts();
-			for (int i = 0; i < parts; i++) {
-				LinkedHashMap<String, String> answers = new LinkedHashMap<String, String>();
-				partAnswers.add(answers);
-				partBuilder(answers, (i + 1));
-			}
-			buildScript(threads, checkGit, partAnswers);
-		}
+
+		LinkedList<LinkedHashMap<String, Object>> partAnswers =
+			new LinkedList<LinkedHashMap<String, Object>>();
+		LinkedHashMap<String, Object> options = ConfigParser.loadConfig(new File(args[0]));
+		Object params[] = ConfigParser.parseConfig(options, partAnswers);
+		buildScript((Integer) params[0], (Boolean) params[1], partAnswers);
+		System.out.println(options);
 	}
 
 	private void partBuilder(HashMap<String, String> answers, int partNum)
@@ -183,14 +164,6 @@ public class GraderGenerator
 		return true;
 	}
 
-	private boolean checkGit()
-	{
-		System.out.print("Check git commit log [y]: ");
-		if (possibleYes.contains(in.nextLine()))
-			return true;
-		return false;
-	}
-
 	int getThreads()
 	{
 		int threads = (int) Math.round(Runtime.getRuntime().availableProcessors());
@@ -216,8 +189,9 @@ public class GraderGenerator
 		return true;
 	}
 
+	@SuppressWarnings ({"unchecked"})
 	private void buildScript(int threads, boolean checkGit,
-		LinkedList<LinkedHashMap<String, String>> answerList)
+		LinkedList<LinkedHashMap<String, Object>> partAnswers)
 	{
 		File graderFile;
 		if (TEST)
@@ -257,7 +231,7 @@ public class GraderGenerator
 			+ "for (int j = 0; j < tmArr.length; j++)\n" + "tmArr[j] = new Timer(true);\n"
 			+ "File rootDir = new File(root);\n"
 			+ "ConcurrentLinkedQueue<File> uniDirs = new ConcurrentLinkedQueue<File>();\n"
-			+ "for (File f : rootDir.listFiles())\n" + getValidDirectories(answerList) + "\n"
+			+ "for (File f : rootDir.listFiles())\n" + getValidDirectories(partAnswers) + "\n"
 			+ "uniDirs.add(f);\n" + "Thread[] workers = new Thread[threads];\n"
 			+ "for (int i = 0; i < threads; i++) {\n"
 			+ "workers[i] = new Thread(new GraderWorker(uniDirs, i));\n" + "workers[i].start();\n"
@@ -336,132 +310,117 @@ public class GraderGenerator
 		gw.println("File partDep;");
 		gw.println("boolean[] badProgram;");
 		gw.println("boolean cleanWorked;");
-		gw.println("boolean goodMake;");
+		gw.println("boolean[] goodMake;");
 		// For each part...
 		int partNum = 1;
-		String exec;
-		for (LinkedHashMap<String, String> answer : answerList) {
-			exec = answer.get("exec");
+		ArrayList<Object> execOps;
+		for (LinkedHashMap<String, Object> answer : partAnswers) {
+			execOps = (ArrayList<Object>) answer.get("names");
+			System.out.println(execOps);
 			// Set the current part directory to here
 			gw.println("partDir = new File(student, \"part" + partNum + "\");");
 			// Preliminary clean
 			gw.println("check.printMessage(\"===Preliminary make clean====\", 1);");
-			gw.println("check.checkMakeClean(partDir, \"" + exec + "\");");
+			String execNames = getExecNames(execOps);
+			gw.println("check.checkMakeClean(partDir, \"" + execNames + "\");");
 			gw.println("check.printMessage(\"=============================\", 1);");
 			// Inidicate that we're checking this part
-			gw.println("check.printMessage(\"\\n" + answer.get("exec") + " verification:\", 1);");
+			gw.println("check.printMessage(\"\\n" + execNames + " verification:\", 1);");
 
 			// Pre build script
-			String script = answer.get("script-before-building");
-			if (script != null && !script.isEmpty()) {
-				gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
-			}
+			printRunScript(gw, (ArrayList<Object>) answer.get("script-before-building"));
 
 			// Build any dependencies before hand
-			String dep = answer.get("dependencies");
-			if (!dep.isEmpty()) {
-				gw.println("check.printMessage(\"===Building dependencies for part" + partNum
-					+ "===\", 1);");
-				String[] depArr = dep.split(",");
-				for (String partDep : depArr) {
-					int num = Integer.parseInt(partDep.trim());
-					gw.println("partDep = new File(student, \"part" + num + "\");");
-					gw.println("check.checkMake(partDep, \"" + answerList.get(num - 1).get("exec")
-						+ "\");");
-				}
-				gw.println("check.printMessage(\"===Dependencies built===\", 1);");
-			}
+			printDepBuild(gw, partNum, (ArrayList<String>) answer.get("dependencies"), partAnswers);
 
 			// Build
-			gw.println("goodMake = check.checkMake(partDir, \"" + exec + "\");\n"
-				+ "if (goodMake)\n" + "out.println(student.getName() + \" " + exec
-				+ ": make+\");\n" + "else\n" + "err.println(student.getName() + \" " + exec
-				+ ": make-\");");
+			gw.println("goodMake = check.checkMake(partDir, \"" + execNames + "\");");
+			printBuildChecks(gw, execNames);
 
-			// Post build script
-			script = answer.get("script-after-building");
-			if (script != null && !script.isEmpty()) {
-				gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
-			}
-
-			// Run tests
-			String args = answer.get("args");
-			if (args.isEmpty()) {
-				gw.println(buildCommand(exec, "", answer.get("input-file"), answer.get("limit"))
-					+ "\n" + "if (badProgram[0])\n" + "err.println(student.getName() + \" " + exec
-					+ ": memory error-\");\n" + "else\n" + "out.println(student.getName() + \" "
-					+ exec + ": memory error+\");\n" + "if (badProgram[1])\n"
-					+ "err.println(student.getName() + \" " + exec + ": leak error-\");\n"
-					+ "else\n" + "out.println(student.getName() + \" " + exec + ": leak error+\");");
-				script = answer.get("script-during-run");
-				if (script != null && !script.isEmpty()) {
-					gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
-				}
-			} else {
-				String[] argsArr = args.split("\\|\\|");
-				int run = 0;
-				for (String arg : argsArr) {
-					gw.println("out.println(\"Test " + (run++) + ":\");");
-					gw.println(buildCommand(exec, arg, answer.get("input-file"),
-						answer.get("limit"))
-						+ "\n"
-						+ "if (badProgram[0])\n"
-						+ "err.println(student.getName() + \" "
-						+ exec
-						+ ": memory error-\");\n"
-						+ "else\n"
-						+ "out.println(student.getName() + \" "
-						+ exec
-						+ ": memory error+\");\n"
-						+ "if (badProgram[1])\n"
-						+ "err.println(student.getName() + \" "
-						+ exec
-						+ ": leak error-\");\n"
-						+ "else\n"
-						+ "out.println(student.getName() + \" "
-						+ exec + ": leak error+\");");
-					script = answer.get("script-during-run");
-					if (script != null && !script.isEmpty()) {
-						gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
-					}
-				}
-			}
-
-			// Additional drivers
-			if (answer.get("driver-dir") != null)
-				runDrivers(gw, answer);
-
-			// Post run script
-			script = answer.get("script-after-run");
-			if (script != null && !script.isEmpty()) {
-				gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
-			}
-
-			// Clean up
-			gw.println("cleanWorked = check.checkMakeClean(partDir, \"" + exec + "\");\n"
-				+ "if (cleanWorked)\n" + "out.println(student.getName() + \" " + exec
-				+ ": make clean+\");\n" + "else\n" + "err.println(student.getName() + \" " + exec
-				+ ": make clean-\");");
-
-			// Clean up dependencies too
-			if (!dep.isEmpty()) {
-				gw.println("check.printMessage(\"===Cleaning dependencies for part" + partNum
-					+ "===\", 1);");
-				String[] depArr = dep.split(",");
-				for (String partDep : depArr) {
-					int num = Integer.parseInt(partDep.trim());
-					gw.println("partDep = new File(student, \"part" + num + "\");");
-					gw.println("check.checkMakeClean(partDep, \""
-						+ answerList.get(num - 1).get("exec") + "\");");
-				}
-				gw.println("check.printMessage(\"===Dependencies cleaned===\", 1);");
-			}
-
-			// Post clean script
-			script = answer.get("script-after-cleaning");
-			if (script != null && !script.isEmpty()) {
-				gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
-			}
+			// // Post build script
+			// script = answer.get("script-after-building");
+			// if (script != null && !script.isEmpty()) {
+			// gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
+			// }
+			//
+			// // Run tests
+			// String args = answer.get("args");
+			// if (args.isEmpty()) {
+			// gw.println(buildCommand(exec, "", answer.get("input-file"), answer.get("limit"))
+			// + "\n" + "if (badProgram[0])\n" + "err.println(student.getName() + \" " + exec
+			// + ": memory error-\");\n" + "else\n" + "out.println(student.getName() + \" "
+			// + exec + ": memory error+\");\n" + "if (badProgram[1])\n"
+			// + "err.println(student.getName() + \" " + exec + ": leak error-\");\n"
+			// + "else\n" + "out.println(student.getName() + \" " + exec + ": leak error+\");");
+			// script = answer.get("script-during-run");
+			// if (script != null && !script.isEmpty()) {
+			// gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
+			// }
+			// } else {
+			// String[] argsArr = args.split("\\|\\|");
+			// int run = 0;
+			// for (String arg : argsArr) {
+			// gw.println("out.println(\"Test " + (run++) + ":\");");
+			// gw.println(buildCommand(exec, arg, answer.get("input-file"),
+			// answer.get("limit"))
+			// + "\n"
+			// + "if (badProgram[0])\n"
+			// + "err.println(student.getName() + \" "
+			// + exec
+			// + ": memory error-\");\n"
+			// + "else\n"
+			// + "out.println(student.getName() + \" "
+			// + exec
+			// + ": memory error+\");\n"
+			// + "if (badProgram[1])\n"
+			// + "err.println(student.getName() + \" "
+			// + exec
+			// + ": leak error-\");\n"
+			// + "else\n"
+			// + "out.println(student.getName() + \" "
+			// + exec + ": leak error+\");");
+			// script = answer.get("script-during-run");
+			// if (script != null && !script.isEmpty()) {
+			// gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
+			// }
+			// }
+			// }
+			//
+			// // Additional drivers
+			// if (answer.get("driver-dir") != null)
+			// runDrivers(gw, answer);
+			//
+			// // Post run script
+			// script = answer.get("script-after-run");
+			// if (script != null && !script.isEmpty()) {
+			// gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
+			// }
+			//
+			// // Clean up
+			// gw.println("cleanWorked = check.checkMakeClean(partDir, \"" + exec + "\");\n"
+			// + "if (cleanWorked)\n" + "out.println(student.getName() + \" " + exec
+			// + ": make clean+\");\n" + "else\n" + "err.println(student.getName() + \" " + exec
+			// + ": make clean-\");");
+			//
+			// // Clean up dependencies too
+			// if (!dep.isEmpty()) {
+			// gw.println("check.printMessage(\"===Cleaning dependencies for part" + partNum
+			// + "===\", 1);");
+			// String[] depArr = dep.split(",");
+			// for (String partDep : depArr) {
+			// int num = Integer.parseInt(partDep.trim());
+			// gw.println("partDep = new File(student, \"part" + num + "\");");
+			// gw.println("check.checkMakeClean(partDep, \""
+			// + partAnswers.get(num - 1).get("exec") + "\");");
+			// }
+			// gw.println("check.printMessage(\"===Dependencies cleaned===\", 1);");
+			// }
+			//
+			// // Post clean script
+			// script = answer.get("script-after-cleaning");
+			// if (script != null && !script.isEmpty()) {
+			// gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
+			// }
 			partNum++;
 		}
 
@@ -473,6 +432,64 @@ public class GraderGenerator
 		gw.println("}\n}\n}\n}");
 		// Done
 		gw.close();
+	}
+
+	private void printBuildChecks(PrintWriter gw, String execNames)
+	{
+		String[] nameArr = execNames.split(",\\ ");
+		if (nameArr.length == 1) {
+			gw.println("if (goodMake[0] && goodMake[1])\n" + "out.println(student.getName() + \" "
+				+ execNames + ": make+\");\n" + "else\n" + "err.println(student.getName() + \" "
+				+ execNames + ": make-\");");
+		} else {
+			gw.println("if (goodMake[0])\n"
+				+ "out.println(student.getName() + \" Overall make: make+\");\n" + "else\n"
+				+ "err.println(student.getName() + \" Overall make: make-\");");
+		}
+	}
+
+	@SuppressWarnings ("unchecked")
+	private void printDepBuild(PrintWriter gw, int partNum, ArrayList<String> depList,
+		LinkedList<LinkedHashMap<String, Object>> partAnswers)
+	{
+		if (depList == null)
+			return;
+		gw.println("check.printMessage(\"===Building dependencies for part" + partNum
+			+ "===\", 1);");
+		for (String partDep : depList) {
+			// Get the number part
+			Matcher m = numberPat.matcher(partDep);
+			m.find();
+			int num = Integer.parseInt(m.group());
+			gw.println("partDep = new File(student, \"part" + num + "\");");
+			gw.println("check.checkMake(partDep, \""
+				+ getExecNames((ArrayList<Object>) partAnswers.get(num - 1).get("names")) + "\");");
+		}
+		gw.println("check.printMessage(\"===Dependencies built===\", 1);");
+	}
+
+	private void printRunScript(PrintWriter gw, ArrayList<Object> scriptArr)
+	{
+		System.out.println("PRS: " + scriptArr);
+		if (scriptArr == null)
+			return;
+		for (Object scriptParams : scriptArr)
+			if (scriptParams instanceof String)
+				gw.println("check.runCommand(partDir, \"" + scriptParams + "\", null, 0);");
+	}
+
+	@SuppressWarnings ("unchecked")
+	private String getExecNames(ArrayList<Object> execOps)
+	{
+		StringBuilder execNames = new StringBuilder();
+		for (Object execParams : execOps)
+			if (execParams instanceof String)
+				execNames.append((String) execParams + ", ");
+			else
+				for (String name : ((LinkedHashMap<String, Object>) execParams).keySet())
+					execNames.append(name + ", ");
+		return execNames.length() > 0 ? execNames.substring(0, execNames.length() - 2) : execNames
+			.toString();
 	}
 
 	private void runDrivers(PrintWriter gw, LinkedHashMap<String, String> answer)
@@ -528,15 +545,19 @@ public class GraderGenerator
 		return command.toString();
 	}
 
-	private String getValidDirectories(LinkedList<LinkedHashMap<String, String>> answerList)
+	@SuppressWarnings ("unchecked")
+	private String getValidDirectories(LinkedList<LinkedHashMap<String, Object>> answerList)
 	{
 		StringBuilder dirs =
 			new StringBuilder(
 				"if (f.isDirectory() && !f.getName().startsWith(\".\") && !f.getName().startsWith(\"lab\")");
-		for (LinkedHashMap<String, String> map : answerList) {
-			String dir = map.get("driver-dir");
-			if (dir != null)
-				dirs.append(" && !f.getName().equalsIgnoreCase(\"" + dir + "\")");
+		for (LinkedHashMap<String, Object> map : answerList) {
+			ArrayList<LinkedHashMap<String, Object>> driverList =
+				(ArrayList<LinkedHashMap<String, Object>>) map.get("test-drivers");
+			if (driverList != null)
+				for (LinkedHashMap<String, Object> driverMap : driverList)
+					for (String driverDir : driverMap.keySet())
+						dirs.append(" && !f.getName().equalsIgnoreCase(\"" + driverDir + "\")");
 		}
 		return dirs.toString() + ")";
 	}

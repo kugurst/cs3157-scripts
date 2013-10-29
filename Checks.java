@@ -11,6 +11,7 @@ import java.io.PrintWriter;
 import java.lang.reflect.Field;
 import java.net.DatagramSocket;
 import java.net.ServerSocket;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Scanner;
@@ -29,7 +30,7 @@ public class Checks
 	int										number;
 
 	// The runtime for executing commands
-	static Runtime							runtime	= Runtime.getRuntime();
+	static Runtime							runtime		= Runtime.getRuntime();
 
 	// The thread executor used for printing the stdout and stderr of the run commands
 	public static ExecutorService			exec;
@@ -40,8 +41,8 @@ public class Checks
 
 	// The header and the footer to denote System errors that occur (and may or may not be due to
 	// the student)
-	static String							header	= "==========ERROR==========\n";
-	static String							footer	= "=========================";
+	static String							header		= "==========ERROR==========\n";
+	static String							footer		= "=========================";
 
 	// A field to contain the current process to be tested that is running.
 	Process									currProc;
@@ -55,10 +56,15 @@ public class Checks
 	LinkedList<String>						commitTitles;
 	LinkedList<String>						commitBodies;
 	public static HashSet<String>			invalidCommitRegex;
+	AtomicBoolean							pushOkay	= new AtomicBoolean(false);
 	private LinkedBlockingQueue<Integer>	messanger;
 
 	public boolean checkMakeClean(File partDir, String makeName)
 	{
+		synchronized (pushOkay) {
+			messanger.clear();
+			pushOkay.set(false);
+		}
 		out.println("Checking make clean:");
 		// Holding the return value. We still need to clean up the directory (so we can't return
 		// directly)
@@ -76,6 +82,7 @@ public class Checks
 			final BufferedReader stderr =
 				new BufferedReader(new InputStreamReader(makeClean.getErrorStream()),
 					2 * (int) Math.pow(1024, 2));
+			pushOkay.set(true);
 			// Print the stdout of this process
 			exec.execute(new StreamPrinter(1, stdout, 1, 0));
 			// Print the stderr of this process
@@ -124,6 +131,10 @@ public class Checks
 	 * @return <code>{memory error, leak error}</code> */
 	public boolean[] testCommand(File workingDir, String command, File inputFile, int limit)
 	{
+		synchronized (pushOkay) {
+			messanger.clear();
+			pushOkay.set(false);
+		}
 		// Marking the command name
 		final String commandName = command.split("\\ ")[0];
 		out.println("Command results:");
@@ -151,6 +162,7 @@ public class Checks
 			final BufferedReader stderr =
 				new BufferedReader(new InputStreamReader(proc.getErrorStream()),
 					2 * (int) Math.pow(1024, 2));
+			pushOkay.set(true);
 			// Print the stdout of this process
 			exec.execute(new StreamPrinter(1, stdout, 2, 0));
 			// This stderr stream contains the output of valgrind. We can easily check for
@@ -217,6 +229,10 @@ public class Checks
 
 	public int runCommand(File workingDir, String command, File inputFile, int limit)
 	{
+		synchronized (pushOkay) {
+			messanger.clear();
+			pushOkay.set(false);
+		}
 		String commandName = command.split("\\ ")[0];
 		out.println("====Custom command:" + commandName + "====");
 		int retVal = -1;
@@ -232,6 +248,7 @@ public class Checks
 			final BufferedReader stderr =
 				new BufferedReader(new InputStreamReader(proc.getErrorStream()),
 					2 * (int) Math.pow(1024, 2));
+			pushOkay.set(true);
 			// Print them
 			exec.execute(new StreamPrinter(1, stdout, 0, 0));
 			exec.execute(new StreamPrinter(2, stderr, 0, 0));
@@ -265,22 +282,29 @@ public class Checks
 		return retVal;
 	}
 
-	public boolean checkMake(File partDir, String makeName)
+	public boolean[] checkMake(File partDir, String makeName)
 	{
+		synchronized (pushOkay) {
+			messanger.clear();
+			pushOkay.set(false);
+		}
 		out.println("Make results:");
+		String[] names = makeName.split(",\\ ");
 		Process makeProc = null;
 		if (!partDir.isDirectory())
-			return false;
+			return new boolean[names.length + 1];
 
 		// Run the make
 		try {
 			makeProc = runtime.exec("make", null, partDir);
+			currProc = makeProc;
 			final BufferedReader stdout =
 				new BufferedReader(new InputStreamReader(makeProc.getInputStream()),
 					2 * (int) Math.pow(1024, 2));
 			final BufferedReader stderr =
 				new BufferedReader(new InputStreamReader(makeProc.getErrorStream()),
 					2 * (int) Math.pow(1024, 2));
+			pushOkay.set(true);
 			// Print the stdout of this process
 			exec.execute(new StreamPrinter(1, stdout, 1, 0));
 			// If anything prints to here on make, then either gcc or make had an error, in which
@@ -307,27 +331,23 @@ public class Checks
 		}
 
 		// Finally, check that the executable(s) exists:
-		String[] names = makeName.split(",\\ ");
 		HashSet<String> nameSet = new HashSet<String>();
-		for (String n : names)
+		HashMap<String, Integer> namePos = new HashMap<String, Integer>();
+		int pos = 1;
+		for (String n : names) {
 			nameSet.add(n);
-		boolean[] foundArr = new boolean[names.length];
-		int found = 0;
-		for (File f : partDir.listFiles())
-			if (f.getName().compareTo(makeName) == 0)
-				foundArr[found++] = true;
-		out.println();
-		boolean foundExec = true;
-		for (boolean f : foundArr) {
-			if (!f) {
-				foundExec = false;
-				break;
-			}
+			namePos.put(n, pos++);
 		}
+		// Make the array for each executable's find status
+		boolean[] makeResults = new boolean[names.length + 1];
+		for (File f : partDir.listFiles())
+			if (nameSet.contains(f.getName()))
+				makeResults[namePos.get(f.getName())] = true;
+		out.println();
 		// Compile the results
-		if (goodMake == 0 && foundExec && !streamFindings[0])
-			return true;
-		return false;
+		if (goodMake == 0 && !streamFindings[0])
+			makeResults[0] = true;
+		return makeResults;
 	}
 
 	public void shutdown()
@@ -870,7 +890,10 @@ public class Checks
 					streamFindings = new boolean[] {memErr, leakErr};
 				}
 				stream.close();
-				messanger.add(0);
+				synchronized (pushOkay) {
+					if (pushOkay.get())
+						messanger.add(0);
+				}
 			} catch (IOException e) {
 				System.err.println(header + "Grader " + number + ":");
 				e.printStackTrace();

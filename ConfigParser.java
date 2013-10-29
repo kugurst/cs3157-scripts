@@ -32,7 +32,7 @@ public final class ConfigParser
 
 	@SuppressWarnings ("unchecked")
 	public static Object[] parseConfig(LinkedHashMap<String, Object> options,
-		LinkedList<LinkedHashMap<String, String>> partAnswers)
+		LinkedList<LinkedHashMap<String, Object>> partAnswers)
 	{
 		int threads =
 			options.containsKey("threads") ? (Integer) options.remove("threads") : Runtime
@@ -44,11 +44,8 @@ public final class ConfigParser
 			// Get the actual mappigns
 			LinkedHashMap<String, Object> partOptions =
 				(LinkedHashMap<String, Object>) partMap.getValue();
-			// Add the hashmap to partAnswers
-			LinkedHashMap<String, String> parsedOptions = new LinkedHashMap<String, String>();
-			partAnswers.add(parsedOptions);
-
-			System.out.println(partMap.getValue());
+			partAnswers.add(partOptions);
+			System.out.println(partOptions);
 		}
 		return new Object[] {threads, checkGit};
 	}
