@@ -129,7 +129,8 @@ public class Checks
 	 * @param command
 	 * @param inputFile
 	 * @return <code>{memory error, leak error}</code> */
-	public boolean[] testCommand(File workingDir, String command, File inputFile, int limit)
+	public boolean[] testCommand(File workingDir, String command, File inputFile, int limit,
+		ArgumentGenerator gen)
 	{
 		synchronized (pushOkay) {
 			messanger.clear();
@@ -149,7 +150,14 @@ public class Checks
 			else
 				out.println("\tTesting: " + command + " with " + inputFile.getName());
 
-			Process proc = runtime.exec("valgrind --leak-check=yes ./" + command, null, workingDir);
+			Process proc;
+			if (gen != null)
+				proc =
+					runtime.exec(
+						"valgrind --leak-check=yes ./" + command + " " + gen.getNextArgument(),
+						null, workingDir);
+			else
+				proc = runtime.exec("valgrind --leak-check=yes ./" + command, null, workingDir);
 			// If we have an input file, feed that to the process
 			if (inputFile != null)
 				exec.execute(new LineFeeder(proc.getOutputStream(), inputFile));
@@ -170,6 +178,106 @@ public class Checks
 			// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
 			// (2) "LEAK SUMMARY:" being found means there were... leaks
 			exec.execute(new StreamPrinter(2, stderr, 2, 2));
+
+			// Wake us limit number of seconds later if we were given a non-zero value for limit
+			if (limit > 0) {
+				ProcessKiller pk = new ProcessKiller(commandName);
+				tmArr[number].schedule(pk, limit * 1000);
+				System.out.println("Grader " + number + ": timed waiting on " + commandName);
+				// Now we wait
+				retVal = proc.waitFor();
+				// If we reached here, then the process may have terminated already and we should
+				// not kill it again.
+				pk.cancel();
+			} else {
+				System.out.println("Grader " + number + ": waiting on " + commandName);
+				retVal = proc.waitFor();
+			}
+			messanger.take();
+			messanger.take();
+			out.println("\tReturn code: " + retVal + "\n");
+		} catch (IOException e) {
+			System.err.println("Grader " + number + ": An error occured while trying to run: "
+				+ commandName);
+			currProc = null;
+			return new boolean[] {true, true};
+		} catch (InterruptedException e) {
+			System.err.println("Grader " + number + ": Interrupted while waiting for "
+				+ commandName + " to complete.");
+			e.printStackTrace();
+		}
+		currProc = null;
+		// return code 126 for valgrind means it cannot find the file specified
+		if (retVal == 126)
+			return new boolean[] {true, true};
+		return streamFindings;
+	}
+
+	/** This command tests some arbitrary command by directly calling exec on the given command
+	 * string. It takes two optional arguments. <code>inputFile</code> refers to a file to be fed
+	 * directly into the program's stdin, and <code>limit</code> refers to how long in seconds to
+	 * run the program. If <code>inputFile</code> is null, then nothing will be piped to the
+	 * program. If <code>limit</code> is 0, then the program will run indefinetly.
+	 * @param workingDir
+	 *            - The initial working directory for this program (e.g. part1, part2,...)
+	 * @param command
+	 * @param input
+	 * @return <code>{memory error, leak error}</code> */
+	public boolean[] testCommand(File workingDir, String command, InputGenerator input, int limit,
+		ArgumentGenerator gen)
+	{
+		synchronized (pushOkay) {
+			messanger.clear();
+			pushOkay.set(false);
+		}
+		// Marking the command name
+		final String commandName = command.split("\\ ")[0];
+		out.println("Command results:");
+		// Check to make sure the directory exists (i.e. they did this part)
+		if (workingDir == null)
+			return new boolean[] {true, true};
+
+		int retVal = 1;
+		try {
+			if (input == null)
+				out.println("\tTesting: " + command);
+			else
+				out.println("\tTesting: " + command + " with InputGenerator: " + input.getClass());
+
+			Process proc;
+			if (gen != null)
+				proc =
+					runtime.exec(
+						"valgrind --leak-check=yes ./" + command + " " + gen.getNextArgument(),
+						null, workingDir);
+			else
+				proc = runtime.exec("valgrind --leak-check=yes ./" + command, null, workingDir);
+			// If we have an input file, feed that to the process
+			if (input != null)
+				exec.execute(new LineFeeder(proc.getOutputStream(), input));
+			System.out.println("Grader " + number + ": started " + commandName);
+			currProc = proc;
+
+			final BufferedReader stdout =
+				new BufferedReader(new InputStreamReader(proc.getInputStream()),
+					2 * (int) Math.pow(1024, 2));
+			final BufferedReader stderr =
+				new BufferedReader(new InputStreamReader(proc.getErrorStream()),
+					2 * (int) Math.pow(1024, 2));
+			pushOkay.set(true);
+			// Print the stdout of this process
+			if (input != null)
+				exec.execute(new StreamPrinter(1, stdout, 2, 0, input));
+			else
+				exec.execute(new StreamPrinter(1, stdout, 2, 0));
+			// This stderr stream contains the output of valgrind. We can easily check for
+			// errors because:
+			// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
+			// (2) "LEAK SUMMARY:" being found means there were... leaks
+			if (input != null)
+				exec.execute(new StreamPrinter(2, stderr, 2, 2, input));
+			else
+				exec.execute(new StreamPrinter(2, stderr, 2, 2));
 
 			// Wake us limit number of seconds later if we were given a non-zero value for limit
 			if (limit > 0) {
@@ -832,6 +940,8 @@ public class Checks
 		BufferedReader	stream;
 		int				errorLevel;
 		String			tabs;
+		InputGenerator	gen;
+		int				type;
 
 		/** @param streamType
 		 *            - 1 for stdout, 2 for stderr
@@ -844,6 +954,7 @@ public class Checks
 		 *            was writing to, 2 for valgrind checking */
 		public StreamPrinter(int streamType, BufferedReader stream, int numTabs, int errorType)
 		{
+			type = streamType;
 			if (streamType == 1)
 				writer = out;
 			else if (streamType == 2)
@@ -855,6 +966,13 @@ public class Checks
 				tabs += "\t";
 		}
 
+		public StreamPrinter(int streamType, BufferedReader stream, int numTabs, int errorType,
+			InputGenerator input)
+		{
+			this(streamType, stream, numTabs, errorType);
+			gen = input;
+		}
+
 		@Override
 		public void run()
 		{
@@ -863,6 +981,12 @@ public class Checks
 				if (errorLevel == 0) {
 					while ((line = stream.readLine()) != null) {
 						writer.println(tabs + line);
+						if (gen != null) {
+							if (type == 1)
+								gen.putNextStdOut(line);
+							else if (type == 2)
+								gen.putNextStdErr(line);
+						}
 					}
 				} else if (errorLevel == 1) {
 					boolean streamWrote = false;
@@ -873,6 +997,12 @@ public class Checks
 						writer.println(tabs + line);
 						if (!streamWrote)
 							streamWrote = true;
+						if (gen != null) {
+							if (type == 1)
+								gen.putNextStdOut(line);
+							else if (type == 2)
+								gen.putNextStdErr(line);
+						}
 					}
 					streamFindings = new boolean[] {streamWrote};
 				} else {
@@ -886,6 +1016,12 @@ public class Checks
 						if (line.contains("LEAK SUMMARY:"))
 							leakErr = true;
 						err.println(tabs + line);
+						if (gen != null) {
+							if (type == 1)
+								gen.putNextStdOut(line);
+							else if (type == 2)
+								gen.putNextStdErr(line);
+						}
 					}
 					streamFindings = new boolean[] {memErr, leakErr};
 				}
@@ -922,8 +1058,9 @@ public class Checks
 
 	private class LineFeeder implements Runnable
 	{
-		PrintWriter	stdin;
-		Scanner		reader;
+		PrintWriter		stdin;
+		Scanner			reader;
+		InputGenerator	gen;
 
 		public LineFeeder(OutputStream processStdin, File inputFile) throws FileNotFoundException
 		{
@@ -931,12 +1068,25 @@ public class Checks
 			reader = new Scanner(inputFile);
 		}
 
+		public LineFeeder(OutputStream processStdin, InputGenerator input)
+		{
+			stdin = new PrintWriter(processStdin, true);
+			gen = input;
+		}
+
 		@Override
 		public void run()
 		{
-			while (reader.hasNextLine())
-				stdin.println(reader.nextLine());
-			reader.close();
+			if (reader != null)
+				while (reader.hasNextLine())
+					stdin.println(reader.nextLine());
+			else {
+				String line;
+				while ((line = gen.getNextInput()) != null)
+					stdin.println(line);
+			}
+			if (reader != null)
+				reader.close();
 			stdin.close();
 		}
 	}
