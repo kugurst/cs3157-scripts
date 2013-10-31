@@ -4,13 +4,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
-import java.util.Map;
-import java.util.Scanner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -27,8 +23,6 @@ public class GraderGenerator
 		possibleYes.add("");
 	}
 
-	// Scanner to read user input
-	private Scanner			in;
 	private Boolean			TEST		= true;
 
 	Pattern					numberPat	= Pattern.compile("\\d+");
@@ -47,146 +41,6 @@ public class GraderGenerator
 		Object params[] = ConfigParser.parseConfig(options, partAnswers);
 		buildScript((Integer) params[0], (Boolean) params[1], partAnswers);
 		System.out.println(options);
-	}
-
-	private void partBuilder(HashMap<String, String> answers, int partNum)
-	{
-		String partName = "part" + partNum;
-		boolean accepted = false;
-		do {
-			System.out.print(partName + ") Executable name: ");
-			answers.put("exec", in.nextLine());
-			do {
-				System.out.print(partName
-					+ ") Should this program have a time limit (in seconds) [0]: ");
-				answers.put("limit", in.nextLine());
-			} while (!isIntegerOrEmpty(answers.get("limit")));
-			System.out.print(partName + ") Should this program read input from a file []: ");
-			answers.put("input-file", in.nextLine());
-			System.out
-				.print("Do you want to run scripts/programs at various points during testing [n]: ");
-			String divergent = in.nextLine();
-			if (!divergent.isEmpty() && possibleYes.contains(divergent)) {
-				System.out.print("Script to run before building []: ");
-				answers.put("script-before-building", in.nextLine());
-				System.out.print("Script to run after building []: ");
-				answers.put("script-after-building", in.nextLine());
-				System.out.print("Script to run during execution []: ");
-				answers.put("script-during-run", in.nextLine());
-				System.out.print("Script to run after execution []: ");
-				answers.put("script-after-run", in.nextLine());
-				System.out.print("Script to run after cleaning []: ");
-				answers.put("script-after-cleaning", in.nextLine());
-			}
-			System.out.print("Enter set of command line arguments []: ");
-			answers.put("args", parseArgs(in.nextLine()));
-			System.out.print("Which parts does " + partName + " depend on []: ");
-			answers.put("dependencies", parseParts(in.nextLine()));
-			System.out.print("Would you like to compile and test additional drivers [n]: ");
-			divergent = in.nextLine();
-			if (!divergent.isEmpty() && possibleYes.contains(divergent)) {
-				do {
-					System.out.print("What directory contains these files: ");
-					answers.put("driver-dir", in.nextLine());
-				} while (answers.get("driver-dir").isEmpty());
-				do {
-					System.out.print("What are the executable names: ");
-					answers.put("driver-exec", parseNames(in.nextLine()));
-				} while (answers.get("driver-exec").isEmpty());
-			}
-			accepted = acceptSummary(answers);
-		} while (!accepted);
-	}
-
-	private boolean acceptSummary(HashMap<String, String> answers)
-	{
-		System.out.println("====Script summary====");
-		for (Map.Entry<String, String> entry : answers.entrySet())
-			System.out.println(entry.getKey() + " : " + entry.getValue());
-		System.out.println("======================");
-		System.out.print("Are you sure these parameters are correct [y]: ");
-		return possibleYes.contains(in.nextLine());
-	}
-
-	private String parseNames(String nextLine)
-	{
-		String[] execArr = nextLine.split("(\\ )+|[,;:][,;:\\ ]*");
-		String names = Arrays.toString(execArr);
-		return names.substring(1, names.length() - 1);
-	}
-
-	private String parseParts(String nextLine)
-	{
-		String parts = "";
-		if (nextLine.isEmpty())
-			return parts;
-		ArrayList<Integer> partsArr = new ArrayList<Integer>();
-		Pattern p = Pattern.compile("\\d+");
-		Matcher m = p.matcher(nextLine);
-		while (m.find())
-			partsArr.add(Integer.parseInt(m.group()));
-		parts = Arrays.toString(partsArr.toArray(new Integer[partsArr.size()]));
-		return parts.substring(1, parts.length() - 1);
-	}
-
-	private String parseArgs(String nextLine)
-	{
-		String[] argsArr = nextLine.split("(\\ )*\\|\\|(\\ )*");
-		StringBuilder args = new StringBuilder();
-		for (String s : argsArr)
-			if (!s.isEmpty())
-				args.append(s + "||");
-		if (args.length() > 0)
-			return args.toString().substring(0, args.length() - 2);
-		else
-			return "";
-	}
-
-	int getParts()
-	{
-		String line;
-		do {
-			System.out.print("How many parts: ");
-			line = in.nextLine();
-		} while (!isInteger(line));
-		return Integer.parseInt(line);
-
-	}
-
-	private boolean isInteger(String line)
-	{
-		if (line.isEmpty())
-			return false;
-		else
-			for (Character c : line.toCharArray())
-				if (!Character.isDigit(c))
-					return false;
-		return true;
-	}
-
-	int getThreads()
-	{
-		int threads = (int) Math.round(Runtime.getRuntime().availableProcessors());
-		String line;
-		do {
-			System.out.print("How many threads [" + (threads / 2) + "]: ");
-			line = in.nextLine();
-		} while (!isIntegerOrEmpty(line));
-		int givenThreads = threads + 1;
-		if (!line.isEmpty())
-			Integer.parseInt(line);
-		if (givenThreads <= threads)
-			return givenThreads;
-		else
-			return threads / 2;
-	}
-
-	private boolean isIntegerOrEmpty(String line)
-	{
-		for (Character c : line.toCharArray())
-			if (!Character.isDigit(c))
-				return false;
-		return true;
 	}
 
 	@SuppressWarnings ({"unchecked"})
@@ -317,12 +171,19 @@ public class GraderGenerator
 		for (LinkedHashMap<String, Object> answer : partAnswers) {
 			execOps = (ArrayList<Object>) answer.get("names");
 			System.out.println(execOps);
+			// Additional clean targets
+			StringBuilder addCleanTargs = new StringBuilder();
+			ArrayList<String> cleanTargs = (ArrayList<String>) answer.get("additional-clean");
+			if (cleanTargs != null)
+				for (String s : cleanTargs)
+					addCleanTargs.append(", " + s);
 			// Set the current part directory to here
 			gw.println("partDir = new File(student, \"part" + partNum + "\");");
 			// Preliminary clean
 			gw.println("check.printMessage(\"===Preliminary make clean====\", 1);");
 			String execNames = getExecNames(execOps);
-			gw.println("check.checkMakeClean(partDir, \"" + execNames + "\");");
+			gw.println("check.checkMakeClean(partDir, \"" + execNames + addCleanTargs.toString()
+				+ "\");");
 			gw.println("check.printMessage(\"=============================\", 1);");
 			// Inidicate that we're checking this part
 			gw.println("check.printMessage(\"\\n" + execNames + " verification:\", 1);");
@@ -335,92 +196,28 @@ public class GraderGenerator
 
 			// Build
 			gw.println("goodMake = check.checkMake(partDir, \"" + execNames + "\");");
-			printBuildChecks(gw, execNames);
+			printBuildChecks(gw, execNames, false);
 
 			// Post build script
 			printRunScript(gw, (ArrayList<Object>) answer.get("script-after-building"));
 
 			// Run tests
-			printPartTest(gw, (ArrayList<Object>) answer.get("names"),
-				(ArrayList<Object>) answer.get("script-during-run"));
+			printCommandTest(gw, (ArrayList<Object>) answer.get("names"), false);
 
-			// String args = answer.get("args");
-			// if (args.isEmpty()) {
-			// gw.println(buildCommand(exec, "", answer.get("input-file"), answer.get("limit"))
-			// + "\n" + "if (badProgram[0])\n" + "err.println(student.getName() + \" " + exec
-			// + ": memory error-\");\n" + "else\n" + "out.println(student.getName() + \" "
-			// + exec + ": memory error+\");\n" + "if (badProgram[1])\n"
-			// + "err.println(student.getName() + \" " + exec + ": leak error-\");\n"
-			// + "else\n" + "out.println(student.getName() + \" " + exec + ": leak error+\");");
-			// script = answer.get("script-during-run");
-			// if (script != null && !script.isEmpty()) {
-			// gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
-			// }
-			// } else {
-			// String[] argsArr = args.split("\\|\\|");
-			// int run = 0;
-			// for (String arg : argsArr) {
-			// gw.println("out.println(\"Test " + (run++) + ":\");");
-			// gw.println(buildCommand(exec, arg, answer.get("input-file"),
-			// answer.get("limit"))
-			// + "\n"
-			// + "if (badProgram[0])\n"
-			// + "err.println(student.getName() + \" "
-			// + exec
-			// + ": memory error-\");\n"
-			// + "else\n"
-			// + "out.println(student.getName() + \" "
-			// + exec
-			// + ": memory error+\");\n"
-			// + "if (badProgram[1])\n"
-			// + "err.println(student.getName() + \" "
-			// + exec
-			// + ": leak error-\");\n"
-			// + "else\n"
-			// + "out.println(student.getName() + \" "
-			// + exec + ": leak error+\");");
-			// script = answer.get("script-during-run");
-			// if (script != null && !script.isEmpty()) {
-			// gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
-			// }
-			// }
-			// }
-			//
-			// // Additional drivers
-			// if (answer.get("driver-dir") != null)
-			// runDrivers(gw, answer);
-			//
-			// // Post run script
-			// script = answer.get("script-after-run");
-			// if (script != null && !script.isEmpty()) {
-			// gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
-			// }
-			//
-			// // Clean up
-			// gw.println("cleanWorked = check.checkMakeClean(partDir, \"" + exec + "\");\n"
-			// + "if (cleanWorked)\n" + "out.println(student.getName() + \" " + exec
-			// + ": make clean+\");\n" + "else\n" + "err.println(student.getName() + \" " + exec
-			// + ": make clean-\");");
-			//
-			// // Clean up dependencies too
-			// if (!dep.isEmpty()) {
-			// gw.println("check.printMessage(\"===Cleaning dependencies for part" + partNum
-			// + "===\", 1);");
-			// String[] depArr = dep.split(",");
-			// for (String partDep : depArr) {
-			// int num = Integer.parseInt(partDep.trim());
-			// gw.println("partDep = new File(student, \"part" + num + "\");");
-			// gw.println("check.checkMakeClean(partDep, \""
-			// + partAnswers.get(num - 1).get("exec") + "\");");
-			// }
-			// gw.println("check.printMessage(\"===Dependencies cleaned===\", 1);");
-			// }
-			//
-			// // Post clean script
-			// script = answer.get("script-after-cleaning");
-			// if (script != null && !script.isEmpty()) {
-			// gw.println("check.runCommand(partDir, \"" + script + "\", null, 0);");
-			// }
+			// Additional drivers
+			printDrivers(gw, (ArrayList<Object>) answer.get("test-drivers"));
+
+			// Post run script
+			printRunScript(gw, (ArrayList<Object>) answer.get("script-after-run"));
+
+			// Clean up
+			printClean(gw, execNames + addCleanTargs.toString(), false);
+
+			// Clean up dependencies too
+			printDepClean(gw, partNum, (ArrayList<String>) answer.get("dependencies"), partAnswers);
+
+			// Post clean script
+			printRunScript(gw, (ArrayList<Object>) answer.get("script-after-cleaning"));
 			partNum++;
 		}
 
@@ -435,20 +232,98 @@ public class GraderGenerator
 	}
 
 	@SuppressWarnings ("unchecked")
-	private void printPartTest(PrintWriter gw, ArrayList<Object> execParams,
-		ArrayList<Object> runScripts)
+	private void printDepClean(PrintWriter gw, int partNum, ArrayList<String> depList,
+		LinkedList<LinkedHashMap<String, Object>> partAnswers)
+	{
+		if (depList == null)
+			return;
+		gw.println("check.printMessage(\"===Cleaning dependencies for part" + partNum
+			+ "===\", 1);");
+		for (String partDep : depList) {
+			// Get the number part
+			Matcher m = numberPat.matcher(partDep);
+			m.find();
+			int num = Integer.parseInt(m.group());
+			gw.println("partDep = new File(student, \"part" + num + "\");");
+			gw.println("check.checkMakeClean(partDep, \""
+				+ getExecNames((ArrayList<Object>) partAnswers.get(num - 1).get("names")) + "\");");
+		}
+		gw.println("check.printMessage(\"===Dependencies cleaned===\", 1);");
+	}
+
+	private void printClean(PrintWriter gw, String execNames, boolean driver)
+	{
+		gw.println("cleanWorked = check.checkMakeClean(" + (driver ? "dest" : "partDir") + ", \""
+			+ execNames + "\");\n" + "if (cleanWorked)\n" + "out.println(student.getName() + \" "
+			+ (driver ? "-DRIVER- " : "") + execNames + ": make clean+\");\n" + "else\n"
+			+ "err.println(student.getName() + \" " + (driver ? "-DRIVER- " : "") + execNames
+			+ ": make clean-\");");
+	}
+
+	@SuppressWarnings ("unchecked")
+	private void printDrivers(PrintWriter gw, ArrayList<Object> driverList)
+	{
+		// For each driver
+		if (driverList == null)
+			return;
+		gw.println("check.printMessage(\"====Testing additional driver====\", 1);");
+		for (Object o : driverList) {
+			LinkedHashMap<String, Object> driverInfo = (LinkedHashMap<String, Object>) o;
+			String dirName = null;
+			// There should only be a single key in this map, corresponding to the name of the
+			// directory
+			for (String s : driverInfo.keySet())
+				dirName = s;
+			// Get the list of drivers in this directory
+			ArrayList<Object> drivers = (ArrayList<Object>) driverInfo.get(dirName);
+			StringBuilder driverNameBuilder = new StringBuilder();
+			for (Object driver : drivers) {
+				if (driver instanceof String)
+					driverNameBuilder.append((String) driver + ", ");
+				else {
+					LinkedHashMap<String, Object> driverParams =
+						(LinkedHashMap<String, Object>) driver;
+					for (String s : driverParams.keySet())
+						driverNameBuilder.append(s + ", ");
+				}
+			}
+			String driverExec = driverNameBuilder.substring(0, driverNameBuilder.length() - 2);
+
+			// Make the drivers for this folder
+			gw.println("File dest = new File(partDir, \"" + dirName + "\");\n"
+				+ "if (dest.exists())\n"
+				+ "deleteFolder(dest);\n"
+				+ "dest.mkdir();\n" // + "symlink(partDir, dest, check);\n"
+				+ "File src = new File(student.getParent(), \"" + dirName + "\");\n"
+				+ "copyFiles(src, dest);\n" + "goodMake = check.checkMake(dest, \"" + driverExec
+				+ "\");");
+			printBuildChecks(gw, driverExec, true);
+
+			// Run the driver
+			printCommandTest(gw, drivers, true);
+
+			// Clean up the drivers
+			printClean(gw, driverExec, true);
+		}
+		gw.println("check.printMessage(\"=================================\", 1);");
+	}
+
+	@SuppressWarnings ("unchecked")
+	private void printCommandTest(PrintWriter gw, ArrayList<Object> execParams, boolean driver)
 	{
 		// Go through each executable
 		for (Object o : execParams) {
 			if (o instanceof String) {
 				String exec = (String) o;
-				gw.println("badProgram = check.testCommand(partDir, \"" + exec
-					+ "\", (File) null, 0, null);\n" + "if (badProgram[0])\n"
-					+ "err.println(student.getName() + \" " + exec + ": memory error-\");\n"
-					+ "else\n" + "out.println(student.getName() + \" " + exec
-					+ ": memory error+\");\n" + "if (badProgram[1])\n"
-					+ "err.println(student.getName() + \" " + exec + ": leak error-\");\n"
-					+ "else\n" + "out.println(student.getName() + \" " + exec + ": leak error+\");");
+				gw.println("badProgram = check.testCommand(" + (driver ? "dest" : "partDir")
+					+ ", \"" + exec + "\", (File) null, 0, null, null);\n" + "if (badProgram[0])\n"
+					+ "err.println(student.getName() + \" " + (driver ? "-DRIVER- " : "") + exec
+					+ ": memory error-\");\n" + "else\n" + "out.println(student.getName() + \" "
+					+ (driver ? "-DRIVER- " : "") + exec + ": memory error+\");\n"
+					+ "if (badProgram[1])\n" + "err.println(student.getName() + \" "
+					+ (driver ? "-DRIVER- " : "") + exec + ": leak error-\");\n" + "else\n"
+					+ "out.println(student.getName() + \" " + (driver ? "-DRIVER- " : "") + exec
+					+ ": leak error+\");");
 			} else {
 				LinkedHashMap<String, Object> commandParams = (LinkedHashMap<String, Object>) o;
 				System.out.println(commandParams);
@@ -472,7 +347,8 @@ public class GraderGenerator
 					if (printRun)
 						gw.println("out.println(\"Test " + (run++) + ":\");");
 					// Format the command
-					gw.print("badProgram = check.testCommand(partDir, \"" + exec);
+					gw.print("badProgram = check.testCommand(" + (driver ? "dest" : "partDir")
+						+ ", \"" + exec);
 					if (arg.isEmpty())
 						gw.print("\", ");
 					else
@@ -491,39 +367,50 @@ public class GraderGenerator
 						gw.print("0, ");
 
 					if (params.containsKey("arg-gen"))
-						gw.print("new " + params.get("arg-gen"));
+						gw.print("new " + params.get("arg-gen") + ", ");
+					else
+						gw.print("null, ");
+
+					if (params.containsKey("simul-run"))
+						gw.print("\"" + params.get("simul-run") + "\"");
 					else
 						gw.print("null");
 					gw.println(");");
 
 					// Print the checks
 					gw.println("if (badProgram[0])\n" + "err.println(student.getName() + \" "
-						+ exec + ": memory error-\");\n" + "else\n"
-						+ "out.println(student.getName() + \" " + exec + ": memory error+\");\n"
-						+ "if (badProgram[1])\n" + "err.println(student.getName() + \" " + exec
-						+ ": leak error-\");\n" + "else\n" + "out.println(student.getName() + \" "
+						+ (driver ? "-DRIVER- " : "") + exec + ": memory error-\");\n" + "else\n"
+						+ "out.println(student.getName() + \" " + (driver ? "-DRIVER- " : "")
+						+ exec + ": memory error+\");\n" + "if (badProgram[1])\n"
+						+ "err.println(student.getName() + \" " + (driver ? "-DRIVER- " : "")
+						+ exec + ": leak error-\");\n" + "else\n"
+						+ "out.println(student.getName() + \" " + (driver ? "-DRIVER- " : "")
 						+ exec + ": leak error+\");");
 				}
 			}
 		}
 	}
 
-	private void printBuildChecks(PrintWriter gw, String execNames)
+	private void printBuildChecks(PrintWriter gw, String execNames, boolean driver)
 	{
+		String mark = "";
+		if (driver)
+			mark = "-DRIVER- ";
 		String[] nameArr = execNames.split(",\\ ");
 		if (nameArr.length == 1) {
 			gw.println("if (goodMake[0] && goodMake[1])\n" + "out.println(student.getName() + \" "
-				+ execNames + ": make+\");\n" + "else\n" + "err.println(student.getName() + \" "
-				+ execNames + ": make-\");");
+				+ mark + execNames + ": make+\");\n" + "else\n"
+				+ "err.println(student.getName() + \" " + mark + execNames + ": make-\");");
 		} else {
-			gw.println("if (goodMake[0])\n"
-				+ "out.println(student.getName() + \" Overall make: make+\");\n" + "else\n"
-				+ "err.println(student.getName() + \" Overall make: make-\");");
+			gw.println("if (goodMake[0])\n" + "out.println(student.getName() + \" " + mark
+				+ "Overall make: make+\");\n" + "else\n" + "err.println(student.getName() + \" "
+				+ mark + "Overall make: make-\");");
 			int pos = 1;
 			for (String name : nameArr) {
 				gw.println("if (goodMake[" + (pos++) + "])\n"
-					+ "out.println(student.getName() + \" " + name + ": make+\");\n" + "else\n"
-					+ "err.println(student.getName() + \" " + name + ": make-\");");
+					+ "out.println(student.getName() + \" " + mark + name + ": make+\");\n"
+					+ "else\n" + "err.println(student.getName() + \" " + mark + name
+					+ ": make-\");");
 			}
 		}
 	}
@@ -570,59 +457,6 @@ public class GraderGenerator
 					execNames.append(name + ", ");
 		return execNames.length() > 0 ? execNames.substring(0, execNames.length() - 2) : execNames
 			.toString();
-	}
-
-	private void runDrivers(PrintWriter gw, LinkedHashMap<String, String> answer)
-	{
-		// Get the driver directory
-		String dirName = answer.get("driver-dir");
-		String driverExec = answer.get("driver-exec");
-		// Run the driver
-		gw.println("check.printMessage(\"====Testing additional driver====\", 1);");
-		gw.println("File dest = new File(partDir, \""
-			+ dirName
-			+ "\");\n"
-			+ "if (dest.exists())\n"
-			+ "deleteFolder(dest);\n"
-			+ "dest.mkdir();\n" // + "symlink(partDir, dest, check);\n"
-			+ "File src = new File(student.getParent(), \"" + dirName + "\");\n"
-			+ "copyFiles(src, dest);\n" + "goodMake = check.checkMake(dest, \"" + driverExec
-			+ "\");\n" + "if (goodMake)\n" + "out.println(student.getName() + \" -DRIVER- "
-			+ driverExec + ": make+\");\n" + "else\n"
-			+ "err.println(student.getName() + \" -DRIVER- " + driverExec + ": make-\");");
-		String[] execNames = driverExec.split(",\\ ");
-		for (String exec : execNames)
-			gw.println("badProgram = check.testCommand(dest, \"" + exec + "\", null, 0);\n"
-				+ "if (badProgram[0])\n" + "err.println(student.getName() + \" -DRIVER- " + exec
-				+ ": memory error-\");\n" + "else\n"
-				+ "out.println(student.getName() + \" -DRIVER- " + exec + ": memory error+\");\n"
-				+ "if (badProgram[1])\n" + "err.println(student.getName() + \" -DRIVER- " + exec
-				+ ": leak error-\");\n" + "else\n" + "out.println(student.getName() + \" -DRIVER- "
-				+ exec + ": leak error+\");");
-		gw.println("cleanWorked = check.checkMakeClean(dest, \"" + driverExec + "\");\n"
-			+ "if (cleanWorked)\n" + "out.println(student.getName() + \" -DRIVER- " + driverExec
-			+ ": make clean+\");\n" + "else\n" + "err.println(student.getName() + \" -DRIVER- "
-			+ driverExec + ": make clean-\");");
-		gw.println("check.printMessage(\"=================================\", 1);");
-	}
-
-	private String buildCommand(String exec, String args, String inputFile, String limit)
-	{
-		StringBuilder command =
-			new StringBuilder("badProgram = check.testCommand(partDir, \"" + exec);
-		if (!args.isEmpty())
-			command.append(" " + args + "\",");
-		else
-			command.append("\",");
-		if (!inputFile.isEmpty())
-			command.append(" new File(\"" + inputFile + "\"),");
-		else
-			command.append(" null,");
-		if (!limit.isEmpty())
-			command.append(" " + limit + ");");
-		else
-			command.append(" 0);");
-		return command.toString();
 	}
 
 	@SuppressWarnings ("unchecked")
