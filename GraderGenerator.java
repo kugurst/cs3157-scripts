@@ -226,7 +226,7 @@ public class GraderGenerator
 		gw.println("public class Grader\n" + "{\n"
 			+ "AtomicInteger counter = new AtomicInteger(0);\n"
 			+ "public Grader(String root, int threads)\n" + "{\n"
-			+ "Checks.exec = Executors.newFixedThreadPool(3 * threads + 3);\n"
+			+ "Checks.exec = Executors.newCachedThreadPool();\n"
 			+ "Checks.tmArr = new Timer[threads];\n" + "Timer[] tmArr = Checks.tmArr;\n"
 			+ "for (int j = 0; j < tmArr.length; j++)\n" + "tmArr[j] = new Timer(true);\n"
 			+ "File rootDir = new File(root);\n"
@@ -341,6 +341,9 @@ public class GraderGenerator
 			printRunScript(gw, (ArrayList<Object>) answer.get("script-after-building"));
 
 			// Run tests
+			printPartTest(gw, (ArrayList<Object>) answer.get("names"),
+				(ArrayList<Object>) answer.get("script-during-run"));
+
 			// String args = answer.get("args");
 			// if (args.isEmpty()) {
 			// gw.println(buildCommand(exec, "", answer.get("input-file"), answer.get("limit"))
@@ -429,6 +432,80 @@ public class GraderGenerator
 		gw.println("}\n}\n}\n}");
 		// Done
 		gw.close();
+	}
+
+	@SuppressWarnings ("unchecked")
+	private void printPartTest(PrintWriter gw, ArrayList<Object> execParams,
+		ArrayList<Object> runScripts)
+	{
+		// Go through each executable
+		for (Object o : execParams) {
+			if (o instanceof String) {
+				String exec = (String) o;
+				gw.println("badProgram = check.testCommand(partDir, \"" + exec
+					+ "\", (File) null, 0, null);\n" + "if (badProgram[0])\n"
+					+ "err.println(student.getName() + \" " + exec + ": memory error-\");\n"
+					+ "else\n" + "out.println(student.getName() + \" " + exec
+					+ ": memory error+\");\n" + "if (badProgram[1])\n"
+					+ "err.println(student.getName() + \" " + exec + ": leak error-\");\n"
+					+ "else\n" + "out.println(student.getName() + \" " + exec + ": leak error+\");");
+			} else {
+				LinkedHashMap<String, Object> commandParams = (LinkedHashMap<String, Object>) o;
+				System.out.println(commandParams);
+				String exec = null;
+				// This should actually only loop once
+				for (String s : commandParams.keySet())
+					exec = s;
+				LinkedHashMap<String, Object> params =
+					(LinkedHashMap<String, Object>) commandParams.get(exec);
+				ArrayList<String> args = (ArrayList<String>) params.get("args");
+				boolean printRun;
+				if (args == null) {
+					args = new ArrayList<String>();
+					args.add("");
+					printRun = false;
+				} else
+					printRun = args.size() > 1;
+				int run = 1;
+				for (String arg : args) {
+					// Print the run number
+					if (printRun)
+						gw.println("out.println(\"Test " + (run++) + ":\");");
+					// Format the command
+					gw.print("badProgram = check.testCommand(partDir, \"" + exec);
+					if (arg.isEmpty())
+						gw.print("\", ");
+					else
+						gw.print(" " + arg + "\", ");
+
+					if (params.containsKey("input-file"))
+						gw.print("new File(\"" + params.get("input-file") + "\"), ");
+					else if (params.containsKey("input-gen"))
+						gw.print("new " + params.get("input-gen") + ", ");
+					else
+						gw.print("(File) null, ");
+
+					if (params.containsKey("limit"))
+						gw.print(params.get("limit") + ", ");
+					else
+						gw.print("0, ");
+
+					if (params.containsKey("arg-gen"))
+						gw.print("new " + params.get("arg-gen"));
+					else
+						gw.print("null");
+					gw.println(");");
+
+					// Print the checks
+					gw.println("if (badProgram[0])\n" + "err.println(student.getName() + \" "
+						+ exec + ": memory error-\");\n" + "else\n"
+						+ "out.println(student.getName() + \" " + exec + ": memory error+\");\n"
+						+ "if (badProgram[1])\n" + "err.println(student.getName() + \" " + exec
+						+ ": leak error-\");\n" + "else\n" + "out.println(student.getName() + \" "
+						+ exec + ": leak error+\");");
+				}
+			}
+		}
 	}
 
 	private void printBuildChecks(PrintWriter gw, String execNames)

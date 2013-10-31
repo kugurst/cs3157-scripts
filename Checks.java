@@ -58,6 +58,7 @@ public class Checks
 	public static HashSet<String>			invalidCommitRegex;
 	AtomicBoolean							pushOkay	= new AtomicBoolean(false);
 	private LinkedBlockingQueue<Integer>	messanger;
+	private LinkedBlockingQueue<String>		pipe;
 
 	public boolean checkMakeClean(File partDir, String makeName)
 	{
@@ -130,7 +131,7 @@ public class Checks
 	 * @param inputFile
 	 * @return <code>{memory error, leak error}</code> */
 	public boolean[] testCommand(File workingDir, String command, File inputFile, int limit,
-		ArgumentGenerator gen)
+		ArgumentGenerator gen, String simulCommand)
 	{
 		synchronized (pushOkay) {
 			messanger.clear();
@@ -150,6 +151,17 @@ public class Checks
 			else
 				out.println("\tTesting: " + command + " with " + inputFile.getName());
 
+			// Setup the simultaneous process
+			Process simul = null;
+			PrintWriter simulWriter = null;
+			if (simulCommand != null) {
+				String simulName = simulCommand.split("\\ ")[0];
+				File simulOut = new File(workingDir, simulName);
+				simulOut.createNewFile();
+				simulWriter = new PrintWriter(new FileOutputStream(simulOut), true);
+			}
+
+			// Create the process
 			Process proc;
 			if (gen != null)
 				proc =
@@ -158,6 +170,18 @@ public class Checks
 						null, workingDir);
 			else
 				proc = runtime.exec("valgrind --leak-check=yes ./" + command, null, workingDir);
+			// If we have a simultaneous program, run it now
+			if (simulCommand != null) {
+				simul = runtime.exec(simulCommand, null, workingDir);
+				final BufferedReader stdout =
+					new BufferedReader(new InputStreamReader(simul.getInputStream()),
+						2 * (int) Math.pow(1024, 2));
+				final BufferedReader stderr =
+					new BufferedReader(new InputStreamReader(simul.getErrorStream()),
+						2 * (int) Math.pow(1024, 2));
+				exec.execute(new StreamPrinter(simulWriter, stdout));
+				exec.execute(new StreamPrinter(simulWriter, stderr));
+			}
 			// If we have an input file, feed that to the process
 			if (inputFile != null)
 				exec.execute(new LineFeeder(proc.getOutputStream(), inputFile));
@@ -172,12 +196,12 @@ public class Checks
 					2 * (int) Math.pow(1024, 2));
 			pushOkay.set(true);
 			// Print the stdout of this process
-			exec.execute(new StreamPrinter(1, stdout, 2, 0));
+			exec.execute(new StreamPrinter(1, stdout, 2, 0, simulCommand != null));
 			// This stderr stream contains the output of valgrind. We can easily check for
 			// errors because:
 			// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
 			// (2) "LEAK SUMMARY:" being found means there were... leaks
-			exec.execute(new StreamPrinter(2, stderr, 2, 2));
+			exec.execute(new StreamPrinter(2, stderr, 2, 2, simulCommand != null));
 
 			// Wake us limit number of seconds later if we were given a non-zero value for limit
 			if (limit > 0) {
@@ -195,6 +219,11 @@ public class Checks
 			}
 			messanger.take();
 			messanger.take();
+			if (simulCommand != null) {
+				simul.waitFor();
+				messanger.take();
+				messanger.take();
+			}
 			out.println("\tReturn code: " + retVal + "\n");
 		} catch (IOException e) {
 			System.err.println("Grader " + number + ": An error occured while trying to run: "
@@ -224,7 +253,7 @@ public class Checks
 	 * @param input
 	 * @return <code>{memory error, leak error}</code> */
 	public boolean[] testCommand(File workingDir, String command, InputGenerator input, int limit,
-		ArgumentGenerator gen)
+		ArgumentGenerator gen, String simulCommand)
 	{
 		synchronized (pushOkay) {
 			messanger.clear();
@@ -244,6 +273,16 @@ public class Checks
 			else
 				out.println("\tTesting: " + command + " with InputGenerator: " + input.getClass());
 
+			// If we have a simultaneous command, set it up
+			Process simul = null;
+			PrintWriter simulWriter = null;
+			if (simulCommand != null) {
+				String simulName = simulCommand.split("\\ ")[0];
+				File simulOut = new File(workingDir, simulName);
+				simulOut.createNewFile();
+				simulWriter = new PrintWriter(new FileOutputStream(simulOut), true);
+			}
+
 			Process proc;
 			if (gen != null)
 				proc =
@@ -252,7 +291,21 @@ public class Checks
 						null, workingDir);
 			else
 				proc = runtime.exec("valgrind --leak-check=yes ./" + command, null, workingDir);
-			// If we have an input file, feed that to the process
+
+			// If we have a simultaneous program, run it now
+			if (simulCommand != null) {
+				simul = runtime.exec(simulCommand, null, workingDir);
+				final BufferedReader stdout =
+					new BufferedReader(new InputStreamReader(simul.getInputStream()),
+						2 * (int) Math.pow(1024, 2));
+				final BufferedReader stderr =
+					new BufferedReader(new InputStreamReader(simul.getErrorStream()),
+						2 * (int) Math.pow(1024, 2));
+				exec.execute(new StreamPrinter(simulWriter, stdout));
+				exec.execute(new StreamPrinter(simulWriter, stderr));
+			}
+
+			// If we have an input generator, feed that to the process
 			if (input != null)
 				exec.execute(new LineFeeder(proc.getOutputStream(), input));
 			System.out.println("Grader " + number + ": started " + commandName);
@@ -267,17 +320,17 @@ public class Checks
 			pushOkay.set(true);
 			// Print the stdout of this process
 			if (input != null)
-				exec.execute(new StreamPrinter(1, stdout, 2, 0, input));
+				exec.execute(new StreamPrinter(1, stdout, 2, 0, input, simulCommand != null));
 			else
-				exec.execute(new StreamPrinter(1, stdout, 2, 0));
+				exec.execute(new StreamPrinter(1, stdout, 2, 0, simulCommand != null));
 			// This stderr stream contains the output of valgrind. We can easily check for
 			// errors because:
 			// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
 			// (2) "LEAK SUMMARY:" being found means there were... leaks
 			if (input != null)
-				exec.execute(new StreamPrinter(2, stderr, 2, 2, input));
+				exec.execute(new StreamPrinter(2, stderr, 2, 2, input, simulCommand != null));
 			else
-				exec.execute(new StreamPrinter(2, stderr, 2, 2));
+				exec.execute(new StreamPrinter(2, stderr, 2, 2, simulCommand != null));
 
 			// Wake us limit number of seconds later if we were given a non-zero value for limit
 			if (limit > 0) {
@@ -295,6 +348,11 @@ public class Checks
 			}
 			messanger.take();
 			messanger.take();
+			if (simulCommand != null) {
+				simul.waitFor();
+				messanger.take();
+				messanger.take();
+			}
 			out.println("\tReturn code: " + retVal + "\n");
 		} catch (IOException e) {
 			System.err.println("Grader " + number + ": An error occured while trying to run: "
@@ -942,6 +1000,7 @@ public class Checks
 		String			tabs;
 		InputGenerator	gen;
 		int				type;
+		private boolean	shouldPipe;
 
 		/** @param streamType
 		 *            - 1 for stdout, 2 for stderr
@@ -966,11 +1025,35 @@ public class Checks
 				tabs += "\t";
 		}
 
+		public StreamPrinter(PrintWriter out, BufferedReader stream)
+		{
+			type = 0;
+			writer = out;
+			shouldPipe = false;
+			this.stream = stream;
+			errorLevel = 0;
+			tabs = "";
+		}
+
 		public StreamPrinter(int streamType, BufferedReader stream, int numTabs, int errorType,
 			InputGenerator input)
 		{
 			this(streamType, stream, numTabs, errorType);
 			gen = input;
+		}
+
+		public StreamPrinter(int streamType, BufferedReader stream, int numTabs, int errorType,
+			InputGenerator input, boolean shouldPipe)
+		{
+			this(streamType, stream, numTabs, errorType, input);
+			this.shouldPipe = shouldPipe;
+		}
+
+		public StreamPrinter(int streamType, BufferedReader stream, int numTabs, int errorType,
+			boolean shouldPipe)
+		{
+			this(streamType, stream, numTabs, errorType);
+			this.shouldPipe = shouldPipe;
 		}
 
 		@Override
@@ -987,6 +1070,8 @@ public class Checks
 							else if (type == 2)
 								gen.putNextStdErr(line);
 						}
+						if (shouldPipe)
+							pipe.add(type + "1" + line);
 					}
 				} else if (errorLevel == 1) {
 					boolean streamWrote = false;
@@ -1003,6 +1088,8 @@ public class Checks
 							else if (type == 2)
 								gen.putNextStdErr(line);
 						}
+						if (shouldPipe)
+							pipe.add(type + "1" + line);
 					}
 					streamFindings = new boolean[] {streamWrote};
 				} else {
@@ -1022,10 +1109,14 @@ public class Checks
 							else if (type == 2)
 								gen.putNextStdErr(line);
 						}
+						if (shouldPipe)
+							pipe.add(type + "1" + line);
 					}
 					streamFindings = new boolean[] {memErr, leakErr};
 				}
 				stream.close();
+				if (shouldPipe)
+					pipe.add(type + "0");
 				synchronized (pushOkay) {
 					if (pushOkay.get())
 						messanger.add(0);
@@ -1061,6 +1152,7 @@ public class Checks
 		PrintWriter		stdin;
 		Scanner			reader;
 		InputGenerator	gen;
+		private boolean	concurrent;
 
 		public LineFeeder(OutputStream processStdin, File inputFile) throws FileNotFoundException
 		{
@@ -1080,7 +1172,13 @@ public class Checks
 			if (reader != null)
 				while (reader.hasNextLine())
 					stdin.println(reader.nextLine());
-			else {
+			else if (concurrent) {
+				String line;
+				try {
+					while (!(line = pipe.take()).startsWith("0"))
+						stdin.println(line);
+				} catch (InterruptedException e) {}
+			} else {
 				String line;
 				while ((line = gen.getNextInput()) != null)
 					stdin.println(line);
