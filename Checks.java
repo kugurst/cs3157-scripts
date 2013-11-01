@@ -6,11 +6,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.lang.reflect.Field;
-import java.net.DatagramSocket;
-import java.net.ServerSocket;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -111,7 +108,8 @@ public class Checks
 		for (File f : partDir.listFiles())
 			if (f.getName().endsWith(".o") || nameSet.contains(f.getName())
 				|| f.getName().compareTo("core") == 0 || f.getName().compareTo("a.out") == 0
-				|| f.getName().endsWith(".gch") || f.getName().endsWith(".a")) {
+				|| f.getName().endsWith(".gch") || f.getName().endsWith(".a")
+				|| f.getName().compareTo("main") == 0) {
 				f.delete();
 				cleanWorked = false;
 			}
@@ -613,154 +611,6 @@ public class Checks
 		messanger = new LinkedBlockingQueue<Integer>();
 	}
 
-	public boolean[] mdbTest(File partDir, String commandName, File inputFile, String portNum)
-	{
-		out.println("Command results:");
-		// Check to make sure the directory exists (i.e. they did this part)
-		if (partDir == null)
-			return new boolean[] {true, true};
-		// Open up the input file for reading, if it exists
-		// Valgrind error booleans
-		final AtomicBoolean memErr = new AtomicBoolean(true);
-		final AtomicBoolean leakErr = new AtomicBoolean(false);
-		int success = 1;
-		try {
-			out.println("Testing " + commandName);
-			Process partProc =
-				runtime.exec("valgrind --leak-check=yes ./" + commandName, null, partDir);
-			System.out.println(Thread.currentThread() + ": started mdb-lookup-server");
-			currProc = partProc;
-			final Scanner stdout = new Scanner(partProc.getInputStream());
-			final Scanner stderr = new Scanner(partProc.getErrorStream());
-			// Print the stdout of this process
-			exec.execute(new Runnable() {
-				@Override
-				public void run()
-				{
-					while (stdout.hasNextLine()) {
-						out.println(stdout.nextLine());
-					}
-					stdout.close();
-				}
-			});
-			// This stderr stream contains the output of valgrind. We can easily check for
-			// errors because:
-			// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
-			// (2) "LEAK SUMMARY:" being found means there were... leaks
-			exec.execute(new Runnable() {
-				@Override
-				public void run()
-				{
-					while (stderr.hasNextLine()) {
-						String line = stderr.nextLine();
-						// There was no memory error
-						if (line.contains("ERROR SUMMARY: 0"))
-							memErr.set(false);
-						if (line.contains("LEAK SUMMARY:"))
-							leakErr.set(true);
-						err.println(line);
-					}
-					stderr.close();
-				}
-			});
-
-			// Make a file to hold the mdb server output
-			File mdbfile = new File(partDir.getParentFile(), "mdb.out.txt");
-			if (mdbfile.exists())
-				mdbfile.delete();
-			mdbfile.createNewFile();
-
-			// For each line of input, make a new nc process
-			Scanner in = new Scanner(inputFile);
-			// Pause until the socket is no longer available
-			System.out.println(Thread.currentThread() + ": Checking for port " + portNum);
-			int count = 0;
-			while (available(Integer.parseInt(portNum)) && count < 2000) {
-				count++;
-				Thread.sleep(25);
-			}
-			// mdb-lookup-server never took the port
-			if (!(count < 2000)) {
-				killProcess();
-				System.err.println(Thread.currentThread() + ": port not bound");
-				out.println("mdb-lookup-server port was never bound!\n"
-					+ "Rerun to see memory memory errors and heap summary.");
-				in.close();
-				return new boolean[] {true, true};
-			}
-
-			// Each netcat has 15 seconds to complete, at which point we kill the mdb-lookup-server
-			// which should free up the netcat
-			// make the command file
-			File ncfile = new File(partDir.getParentFile(), "nc.sh");
-			if (ncfile.exists())
-				ncfile.delete();
-			ncfile.createNewFile();
-			PrintStream ncFileOut = new PrintStream(ncfile);
-			System.out.println(Thread.currentThread() + ": Running nc on mdb-lookup-server");
-			while (in.hasNextLine()) {
-				String line = in.nextLine();
-				// Write out the command to file
-				ncFileOut.println("echo nc for phrase \\\"" + line + "\\\": >> mdb.out.txt");
-				ncFileOut.println("echo " + line + " | nc -q 5 localhost " + portNum
-					+ " >> mdb.out.txt && echo >> mdb.out.txt");
-			}
-			ncFileOut.flush();
-			ncFileOut.close();
-
-			Process ncproc = runtime.exec("bash nc.sh", null, partDir.getParentFile());
-			// Gobble this process's streams, as bash should output the nc stuff to file
-			new StreamGobbler(ncproc.getErrorStream());
-			new StreamGobbler(ncproc.getInputStream());
-			final AtomicBoolean killed = new AtomicBoolean(false);
-			final Thread ncWait = Thread.currentThread();
-			// Close the process
-			try {
-				TimerTask tt = new TimerTask() {
-					@Override
-					public void run()
-					{
-						killProcess();
-						System.err.println(ncWait + ": killed mdb-lookup-server");
-						out.println("mdb-lookup-server took more than 5 seconds to send a response.");
-						killed.set(true);
-					}
-				};
-				tmArr[number].schedule(tt, 15 * 1000);
-				ncproc.waitFor();
-				// If we reach this point, then we don't need to interrupt
-				if (!killed.get())
-					tt.cancel();
-			} catch (InterruptedException e) {
-				in.close();
-				killProcess();
-				success = partProc.waitFor();
-				out.println("Return code: " + success + "\n");
-				e.printStackTrace();
-				return new boolean[] {true, true};
-			}
-			in.close();
-			killProcess();
-			success = partProc.waitFor();
-			out.println("Return code: " + success + "\n");
-		} catch (IOException e) {
-			System.err.println("An error occured while trying to run: " + commandName);
-			killProcess();
-			e.printStackTrace();
-			return new boolean[] {true, true};
-		} catch (InterruptedException e) {
-			System.err.println("Interrupted while waiting for process to complete.");
-			killProcess();
-			e.printStackTrace();
-			return new boolean[] {true, true};
-		}
-		// return code 126 for valgrind means it cannot find the file specified
-		currProc = null;
-		if (success == 126)
-			return new boolean[] {true, true};
-		return new boolean[] {memErr.get(), leakErr.get()};
-	}
-
 	private void killProcess()
 	{
 		try {
@@ -783,164 +633,6 @@ public class Checks
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
-	}
-
-	public boolean checkFileEquiv(File user, File base)
-	{
-		final AtomicBoolean equal = new AtomicBoolean(true);
-		// First, make sure the user's file exists
-		if (!user.isFile())
-			return false;
-		// Then, sanitize the user file
-		File script = sanitize(user);
-		script.delete();
-		// Then run diff, and print the result to file
-		String command = "diff '" + user.getAbsolutePath() + "' '" + base.getAbsolutePath() + "'";
-		try {
-			script.createNewFile();
-			PrintStream diffWriter = new PrintStream(script);
-			diffWriter.println(command);
-			diffWriter.flush();
-			diffWriter.close();
-		} catch (IOException e) {
-			e.printStackTrace();
-			return false;
-		}
-		try {
-			Process diffExec = runtime.exec("bash san.sh", null, user.getParentFile());
-			final Scanner stdout = new Scanner(diffExec.getInputStream());
-			final Scanner stderr = new Scanner(diffExec.getErrorStream());
-			// Print the stdout of this process
-			out.println("diff on " + user.getName() + ":");
-			exec.execute(new Runnable() {
-				@Override
-				public void run()
-				{
-					// If anything prints here, then they aren't the same
-					while (stdout.hasNextLine()) {
-						out.println(stdout.nextLine());
-						equal.set(false);
-					}
-					stdout.close();
-				}
-			});
-			// Print the stderr of this process
-			exec.execute(new Runnable() {
-				@Override
-				public void run()
-				{
-					while (stderr.hasNextLine()) {
-						err.println(stderr.nextLine());
-						equal.set(false);
-					}
-					stderr.close();
-				}
-			});
-
-			// Wait for it to finish
-			diffExec.waitFor();
-			out.println();
-		} catch (IOException e) {
-			e.printStackTrace();
-			return false;
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-			return false;
-		}
-		script.delete();
-		return equal.get();
-	}
-
-	private File sanitize(File user)
-	{
-		// Write the bash script to sanitize the file
-		File bash = new File(user.getParent(), "san.sh");
-		if (bash.isFile())
-			bash.delete();
-		PrintStream bashWriter = null;
-		try {
-			bash.createNewFile();
-			bashWriter = new PrintStream(bash);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		// Write the script to file
-		bashWriter.println("sed '/^[[:space:]]*$/{:a;$d;N;/\\n[[:space:]]*$/ba}' " + user.getName()
-			+ " > " + user.getName() + ".2");
-		bashWriter.println("mv " + user.getName() + ".2 " + user.getName());
-		bashWriter.flush();
-		bashWriter.close();
-
-		// Execute the script
-		try {
-			Process bashExec = runtime.exec("bash san.sh", null, user.getParentFile());
-			final Scanner stdout = new Scanner(bashExec.getInputStream());
-			final Scanner stderr = new Scanner(bashExec.getErrorStream());
-			// Print the stdout of this process
-			exec.execute(new Runnable() {
-				@Override
-				public void run()
-				{
-					while (stdout.hasNextLine()) {
-						System.err.flush();
-						System.out.println(stdout.nextLine());
-					}
-					stdout.close();
-				}
-			});
-			// Print the stderr of this process
-			exec.execute(new Runnable() {
-				@Override
-				public void run()
-				{
-					while (stderr.hasNextLine()) {
-						System.out.flush();
-						System.err.println(stderr.nextLine());
-					}
-					stderr.close();
-				}
-			});
-
-			// Wait for it to finish
-			bashExec.waitFor();
-		} catch (IOException e) {
-			e.printStackTrace();
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		}
-
-		// We're done
-		return bash;
-	}
-
-	public static boolean available(int port)
-	{
-		if (port < 1 || port > 65535) { throw new IllegalArgumentException("Invalid start port: "
-			+ port); }
-
-		ServerSocket ss = null;
-		DatagramSocket ds = null;
-		try {
-			ss = new ServerSocket(port);
-			ss.setReuseAddress(true);
-			ds = new DatagramSocket(port);
-			ds.setReuseAddress(true);
-			return true;
-		} catch (IOException e) {} finally {
-			if (ds != null) {
-				ds.close();
-			}
-
-			if (ss != null) {
-				try {
-					ss.close();
-				} catch (IOException e) {
-					/* should not be thrown */
-				}
-			}
-		}
-
-		return false;
 	}
 
 	private class LogReader implements Runnable
@@ -1117,6 +809,12 @@ public class Checks
 				stream.close();
 				if (shouldPipe)
 					pipe.add(type + "0");
+				if (gen != null) {
+					if (type == 1)
+						gen.putNextStdOut(null);
+					else if (type == 2)
+						gen.putNextStdErr(null);
+				}
 				synchronized (pushOkay) {
 					if (pushOkay.get())
 						messanger.add(0);
@@ -1175,8 +873,9 @@ public class Checks
 			else if (concurrent) {
 				String line;
 				try {
-					while (!(line = pipe.take()).startsWith("0"))
-						stdin.println(line);
+					do {
+						stdin.println((line = pipe.take()));
+					} while (line.charAt(1) != '0');
 				} catch (InterruptedException e) {}
 			} else {
 				String line;
