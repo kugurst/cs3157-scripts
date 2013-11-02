@@ -129,7 +129,7 @@ public class Checks
 	 * @param inputFile
 	 * @return <code>{memory error, leak error}</code> */
 	public boolean[] testCommand(File workingDir, String command, File inputFile, int limit,
-		ArgumentGenerator gen, String simulCommand)
+		ArgumentGenerator gen, String simulCommand, boolean noValgrind)
 	{
 		synchronized (pushOkay) {
 			messanger.clear();
@@ -251,7 +251,7 @@ public class Checks
 	 * @param input
 	 * @return <code>{memory error, leak error}</code> */
 	public boolean[] testCommand(File workingDir, String command, InputGenerator input, int limit,
-		ArgumentGenerator gen, String simulCommand)
+		ArgumentGenerator gen, String simulCommand, boolean noValgrind)
 	{
 		synchronized (pushOkay) {
 			messanger.clear();

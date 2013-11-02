@@ -7,6 +7,9 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -23,8 +26,8 @@ public class GraderGenerator
 		possibleYes.add("");
 	}
 
-	private Boolean			TEST		= true;
-
+	private Boolean			TEST		= false;
+	Executor				exec		= Executors.newCachedThreadPool();
 	Pattern					numberPat	= Pattern.compile("\\d+");
 
 	// This class will ask a series of questions to construct a Grader Script
@@ -38,9 +41,120 @@ public class GraderGenerator
 		LinkedList<LinkedHashMap<String, Object>> partAnswers =
 			new LinkedList<LinkedHashMap<String, Object>>();
 		LinkedHashMap<String, Object> options = ConfigParser.loadConfig(new File(args[0]));
+		if (options.containsKey("extract-mbox"))
+			extractMbox(options.remove("extract-mbox"));
 		Object params[] = ConfigParser.parseConfig(options, partAnswers);
 		buildScript((Integer) params[0], (Boolean) params[1], partAnswers);
 		System.out.println(options);
+	}
+
+	@SuppressWarnings ("unchecked")
+	private void extractMbox(Object mboxMap)
+	{
+		LinkedHashMap<String, String> mboxParams = (LinkedHashMap<String, String>) mboxMap;
+		File mboxDir = new File(mboxParams.get("mbox-from"));
+		// Make the folder if it doesn't exist
+		final File destFolder = new File(mboxParams.get("dest"));
+		if (destFolder.isFile()) {
+			System.err.println("Destination folder is file!");
+			System.exit(3);
+		}
+		if (!destFolder.isDirectory() && !destFolder.mkdirs()) {
+			System.err.println("Failed to make destination directory!");
+			System.exit(3);
+		}
+		// A pattern used to retrieve the username of submission
+		final Pattern labPat = Pattern.compile("-lab\\d+\\.mbox");
+		// Mark the original repo
+		final File cloneSource = new File(mboxParams.get("clone-from"));
+		// git clone and git am each mbox file, threaded of course (because it takes a while)
+		// Make the thread
+		Thread[] cloneWorkers = new Thread[Runtime.getRuntime().availableProcessors()];
+		final ConcurrentLinkedDeque<File> mboxFiles = new ConcurrentLinkedDeque<File>();
+		for (File mboxFile : mboxDir.listFiles())
+			if (mboxFile.getName().endsWith(".mbox"))
+				mboxFiles.add(mboxFile);
+		Runnable r = new Runnable() {
+			@Override
+			public void run()
+			{
+				File mboxFile;
+				while ((mboxFile = mboxFiles.poll()) != null) {
+					String uni = mboxFile.getName();
+					// Remove the -labN.mbox part
+					Matcher m = labPat.matcher(uni);
+					m.find();
+					uni = uni.substring(0, m.start());
+					// Remove the destination directory if it exists
+					File dest = new File(destFolder, uni);
+					if (dest.isFile())
+						dest.delete();
+					else if (dest.isDirectory())
+						deleteDirectory(dest);
+					// Clone the directory
+					try {
+						Process gitClone =
+							Runtime.getRuntime().exec(
+								"git clone " + cloneSource.getAbsolutePath() + " "
+									+ dest.getAbsolutePath());
+						exec.execute(new StreamGobbler(gitClone.getErrorStream()));
+						exec.execute(new StreamGobbler(gitClone.getInputStream()));
+						int success = gitClone.waitFor();
+						if (success != 0) {
+							System.err.println(Thread.currentThread() + ": unable to clone for "
+								+ uni);
+							continue;
+						}
+						Process gitAM =
+							Runtime.getRuntime().exec(
+								"git am --whitespace=nowarn " + mboxFile.getAbsolutePath(), null,
+								dest);
+						exec.execute(new StreamGobbler(gitAM.getErrorStream()));
+						exec.execute(new StreamGobbler(gitAM.getInputStream()));
+						success = gitAM.waitFor();
+						if (success != 0) {
+							System.err.println(Thread.currentThread() + ": unable to patch for "
+								+ uni);
+							continue;
+						}
+					} catch (IOException e) {
+						System.err.println(Thread.currentThread() + ": unable to clone for " + uni);
+						e.printStackTrace();
+					} catch (InterruptedException e) {
+						System.err.println(Thread.currentThread()
+							+ ": interrupted while cloning for " + uni);
+						e.printStackTrace();
+					}
+				}
+			}
+		};
+		// Spawn each thread
+		for (int i = 0; i < cloneWorkers.length; i++) {
+			cloneWorkers[i] = new Thread(r);
+			cloneWorkers[i].start();
+		}
+		// Wait for them to finish
+		for (Thread t : cloneWorkers)
+			try {
+				t.join();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+				System.exit(4);
+			}
+	}
+
+	private void deleteDirectory(File source)
+	{
+		File[] contents = source.listFiles();
+		for (File f : contents) {
+			if (f.getName().equals(".") || f.getName().equals(".."))
+				continue;
+			else if (f.isDirectory())
+				deleteDirectory(f);
+			else
+				f.delete();
+		}
+		source.delete();
 	}
 
 	@SuppressWarnings ({"unchecked"})
@@ -171,20 +285,27 @@ public class GraderGenerator
 		for (LinkedHashMap<String, Object> answer : partAnswers) {
 			execOps = (ArrayList<Object>) answer.get("names");
 			System.out.println(execOps);
+
 			// Additional clean targets
 			StringBuilder addCleanTargs = new StringBuilder();
 			ArrayList<String> cleanTargs = (ArrayList<String>) answer.get("additional-clean");
 			if (cleanTargs != null)
 				for (String s : cleanTargs)
 					addCleanTargs.append(", " + s);
+
 			// Set the current part directory to here
 			gw.println("partDir = new File(student, \"part" + partNum + "\");");
+
 			// Preliminary clean
-			gw.println("check.printMessage(\"===Preliminary make clean====\", 1);");
-			String execNames = getExecNames(execOps);
-			gw.println("check.checkMakeClean(partDir, \"" + execNames + addCleanTargs.toString()
-				+ "\");");
-			gw.println("check.printMessage(\"=============================\", 1);");
+			String execNames = null;
+			if (execOps != null) {
+				gw.println("check.printMessage(\"===Preliminary make clean====\", 1);");
+				execNames = getExecNames(execOps);
+				gw.println("check.checkMakeClean(partDir, \"" + execNames
+					+ addCleanTargs.toString() + "\");");
+				gw.println("check.printMessage(\"=============================\", 1);");
+			}
+
 			// Inidicate that we're checking this part
 			gw.println("check.printMessage(\"\\n" + execNames + " verification:\", 1);");
 
@@ -195,14 +316,19 @@ public class GraderGenerator
 			printDepBuild(gw, partNum, (ArrayList<String>) answer.get("dependencies"), partAnswers);
 
 			// Build
-			gw.println("goodMake = check.checkMake(partDir, \"" + execNames + "\");");
-			printBuildChecks(gw, execNames, false);
+			if (execOps != null) {
+				gw.println("goodMake = check.checkMake(partDir, \"" + execNames + "\");");
+				printBuildChecks(gw, execNames, false);
+			}
 
 			// Post build script
 			printRunScript(gw, (ArrayList<Object>) answer.get("script-after-building"));
 
 			// Run tests
-			printCommandTest(gw, (ArrayList<Object>) answer.get("names"), false);
+			if (execOps != null)
+				printCommandTest(gw, execOps, false, false);
+			else
+				printCommandTest(gw, (ArrayList<Object>) answer.get("no-make"), false, true);
 
 			// Additional drivers
 			printDrivers(gw, (ArrayList<Object>) answer.get("test-drivers"));
@@ -211,7 +337,8 @@ public class GraderGenerator
 			printRunScript(gw, (ArrayList<Object>) answer.get("script-after-run"));
 
 			// Clean up
-			printClean(gw, execNames + addCleanTargs.toString(), false);
+			if (execOps != null)
+				printClean(gw, execNames + addCleanTargs.toString(), false);
 
 			// Clean up dependencies too
 			printDepClean(gw, partNum, (ArrayList<String>) answer.get("dependencies"), partAnswers);
@@ -300,7 +427,7 @@ public class GraderGenerator
 			printBuildChecks(gw, driverExec, true);
 
 			// Run the driver
-			printCommandTest(gw, drivers, true);
+			printCommandTest(gw, drivers, true, false);
 
 			// Clean up the drivers
 			printClean(gw, driverExec, true);
@@ -309,7 +436,8 @@ public class GraderGenerator
 	}
 
 	@SuppressWarnings ("unchecked")
-	private void printCommandTest(PrintWriter gw, ArrayList<Object> execParams, boolean driver)
+	private void printCommandTest(PrintWriter gw, ArrayList<Object> execParams, boolean driver,
+		boolean b)
 	{
 		// Go through each executable
 		for (Object o : execParams) {
