@@ -163,11 +163,12 @@ public class Checks
 			Process proc;
 			if (gen != null)
 				proc =
-					runtime.exec(
-						"valgrind --leak-check=yes ./" + command + " " + gen.getNextArgument(),
-						null, workingDir);
+					runtime.exec((noValgrind ? "" : "valgrind --leak-check=yes ./") + command + " "
+						+ gen.getNextArgument(), null, workingDir);
 			else
-				proc = runtime.exec("valgrind --leak-check=yes ./" + command, null, workingDir);
+				proc =
+					runtime.exec((noValgrind ? "" : "valgrind --leak-check=yes ./") + command,
+						null, workingDir);
 			// If we have a simultaneous program, run it now
 			if (simulCommand != null) {
 				simul = runtime.exec(simulCommand, null, workingDir);
@@ -199,7 +200,7 @@ public class Checks
 			// errors because:
 			// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
 			// (2) "LEAK SUMMARY:" being found means there were... leaks
-			exec.execute(new StreamPrinter(2, stderr, 2, 2, simulCommand != null));
+			exec.execute(new StreamPrinter(2, stderr, 2, (noValgrind ? 1 : 2), simulCommand != null));
 
 			// Wake us limit number of seconds later if we were given a non-zero value for limit
 			if (limit > 0) {
@@ -284,11 +285,12 @@ public class Checks
 			Process proc;
 			if (gen != null)
 				proc =
-					runtime.exec(
-						"valgrind --leak-check=yes ./" + command + " " + gen.getNextArgument(),
-						null, workingDir);
+					runtime.exec((noValgrind ? "" : "valgrind --leak-check=yes ./") + command + " "
+						+ gen.getNextArgument(), null, workingDir);
 			else
-				proc = runtime.exec("valgrind --leak-check=yes ./" + command, null, workingDir);
+				proc =
+					runtime.exec((noValgrind ? "" : "valgrind --leak-check=yes ./") + command,
+						null, workingDir);
 
 			// If we have a simultaneous program, run it now
 			if (simulCommand != null) {
@@ -326,9 +328,11 @@ public class Checks
 			// (1) "ERROR SUMMARY: 0" not being found means there were memory errors
 			// (2) "LEAK SUMMARY:" being found means there were... leaks
 			if (input != null)
-				exec.execute(new StreamPrinter(2, stderr, 2, 2, input, simulCommand != null));
+				exec.execute(new StreamPrinter(2, stderr, 2, (noValgrind ? 1 : 2), input,
+					simulCommand != null));
 			else
-				exec.execute(new StreamPrinter(2, stderr, 2, 2, simulCommand != null));
+				exec.execute(new StreamPrinter(2, stderr, 2, (noValgrind ? 1 : 2),
+					simulCommand != null));
 
 			// Wake us limit number of seconds later if we were given a non-zero value for limit
 			if (limit > 0) {
@@ -702,7 +706,7 @@ public class Checks
 		 *            - The number of tabs to indent
 		 * @param errorType
 		 *            - The error logging checks. 0 for no checking, 1 for checking if the stream
-		 *            was writing to, 2 for valgrind checking */
+		 *            was written to, 2 for valgrind checking */
 		public StreamPrinter(int streamType, BufferedReader stream, int numTabs, int errorType)
 		{
 			type = streamType;

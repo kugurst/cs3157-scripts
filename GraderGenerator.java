@@ -26,7 +26,7 @@ public class GraderGenerator
 		possibleYes.add("");
 	}
 
-	private Boolean			TEST		= false;
+	private Boolean			TEST		= true;
 	Executor				exec		= Executors.newCachedThreadPool();
 	Pattern					numberPat	= Pattern.compile("\\d+");
 
@@ -306,8 +306,9 @@ public class GraderGenerator
 				gw.println("check.printMessage(\"=============================\", 1);");
 			}
 
+			String allExecs = getNames(execNames, (ArrayList<Object>) answer.get("no-make"));
 			// Inidicate that we're checking this part
-			gw.println("check.printMessage(\"\\n" + execNames + " verification:\", 1);");
+			gw.println("check.printMessage(\"\\n" + allExecs + " verification:\", 1);");
 
 			// Pre build script
 			printRunScript(gw, (ArrayList<Object>) answer.get("script-before-building"));
@@ -327,7 +328,7 @@ public class GraderGenerator
 			// Run tests
 			if (execOps != null)
 				printCommandTest(gw, execOps, false, false);
-			else
+			if (answer.containsKey("no-make"))
 				printCommandTest(gw, (ArrayList<Object>) answer.get("no-make"), false, true);
 
 			// Additional drivers
@@ -356,6 +357,27 @@ public class GraderGenerator
 		gw.println("}\n}\n}\n}");
 		// Done
 		gw.close();
+	}
+
+	@SuppressWarnings ("unchecked")
+	private String getNames(String execNames, ArrayList<Object> noMakeList)
+	{
+		StringBuilder allNames = new StringBuilder();
+		if (execNames != null)
+			allNames.append(execNames);
+		if (noMakeList == null)
+			return allNames.toString();
+		for (Object o : noMakeList) {
+			if (o instanceof String)
+				allNames.append(", " + o);
+			else
+				for (String name : ((LinkedHashMap<String, Object>) o).keySet())
+					allNames.append(", " + name);
+		}
+		if (allNames.substring(0, 2).equals(", "))
+			return allNames.toString().substring(2);
+		else
+			return allNames.toString();
 	}
 
 	@SuppressWarnings ("unchecked")
@@ -437,21 +459,21 @@ public class GraderGenerator
 
 	@SuppressWarnings ("unchecked")
 	private void printCommandTest(PrintWriter gw, ArrayList<Object> execParams, boolean driver,
-		boolean b)
+		boolean noValgrind)
 	{
 		// Go through each executable
 		for (Object o : execParams) {
 			if (o instanceof String) {
 				String exec = (String) o;
 				gw.println("badProgram = check.testCommand(" + (driver ? "dest" : "partDir")
-					+ ", \"" + exec + "\", (File) null, 0, null, null);\n" + "if (badProgram[0])\n"
-					+ "err.println(student.getName() + \" " + (driver ? "-DRIVER- " : "") + exec
-					+ ": memory error-\");\n" + "else\n" + "out.println(student.getName() + \" "
-					+ (driver ? "-DRIVER- " : "") + exec + ": memory error+\");\n"
-					+ "if (badProgram[1])\n" + "err.println(student.getName() + \" "
-					+ (driver ? "-DRIVER- " : "") + exec + ": leak error-\");\n" + "else\n"
+					+ ", \"" + exec + "\", (File) null, 0, null, null, " + noValgrind + ");\n"
+					+ "if (badProgram[0])\n" + "err.println(student.getName() + \" "
+					+ (driver ? "-DRIVER- " : "") + exec + ": memory error-\");\n" + "else\n"
 					+ "out.println(student.getName() + \" " + (driver ? "-DRIVER- " : "") + exec
-					+ ": leak error+\");");
+					+ ": memory error+\");\n" + "if (badProgram[1])\n"
+					+ "err.println(student.getName() + \" " + (driver ? "-DRIVER- " : "") + exec
+					+ ": leak error-\");\n" + "else\n" + "out.println(student.getName() + \" "
+					+ (driver ? "-DRIVER- " : "") + exec + ": leak error+\");");
 			} else {
 				LinkedHashMap<String, Object> commandParams = (LinkedHashMap<String, Object>) o;
 				System.out.println(commandParams);
@@ -503,7 +525,7 @@ public class GraderGenerator
 						gw.print("\"" + params.get("simul-run") + "\"");
 					else
 						gw.print("null");
-					gw.println(");");
+					gw.println(", " + noValgrind + ");");
 
 					// Print the checks
 					gw.println("if (badProgram[0])\n" + "err.println(student.getName() + \" "

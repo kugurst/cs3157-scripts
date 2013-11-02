@@ -22,4 +22,4 @@ part2:
     - mylist.h
 part3:
   no-make:
-    mdb-lookup-server.sh
+    - mdb-lookup-server.sh
