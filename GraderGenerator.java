@@ -26,7 +26,7 @@ public class GraderGenerator
 		possibleYes.add("");
 	}
 
-	private Boolean			TEST		= true;
+	private Boolean			TEST		= false;
 	Executor				exec		= Executors.newCachedThreadPool();
 	Pattern					numberPat	= Pattern.compile("\\d+");
 
@@ -206,6 +206,9 @@ public class GraderGenerator
 			+ "}\n" + "for (Thread worker : workers)\n" + "try {\n" + "worker.join();\n"
 			+ "} catch (InterruptedException e) {\n" + "e.printStackTrace();\n" + "}\n"
 			+ "Checks.exec.shutdown();\n" + "}");
+		// Make sure the thread count is correct
+		if (threads > Runtime.getRuntime().availableProcessors() || threads <= 0)
+			threads = Runtime.getRuntime().availableProcessors() / 2;
 		// Print out the main method
 		gw.println("public static void main(String[] args)\n" + "{\n" + "new Grader(\"./\", "
 			+ threads + ");\n" + "}");
