@@ -44,7 +44,7 @@ public class PortInputGenerator extends InputGenerator
 	{
 		if (line == null)
 			out.close();
-		if (!acceptableOutput.contains(line.trim()))
+		else if (!acceptableOutput.contains(line.trim()))
 			out.println("bad");
 	}
 }
