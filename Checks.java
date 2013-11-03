@@ -383,8 +383,8 @@ public class Checks
 			if (inputFile != null)
 				exec.execute(new LineFeeder(proc.getOutputStream(), inputFile));
 			// Get the process streams
-			new StreamGobbler(proc.getInputStream());
-			new StreamGobbler(proc.getErrorStream());
+			exec.execute(new StreamGobbler(proc.getInputStream()));
+			exec.execute(new StreamGobbler(proc.getErrorStream()));
 			retVal = proc.waitFor();
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -538,7 +538,7 @@ public class Checks
 				runtime.exec("git log --abbrev-commit --format=format:\"%s:|:%b%n...\"", null,
 					partDir);
 			// Ignore stderr
-			new StreamGobbler(gitLog.getErrorStream());
+			exec.execute(new StreamGobbler(gitLog.getErrorStream()));
 			// Read stdout
 			exec.execute(new LogReader(gitLog.getInputStream()));
 			// Wait for the reader to finish
