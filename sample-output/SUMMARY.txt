@@ -1,0 +1,23 @@
+uni1234 GIT+
+uni1234 mylist-test: make+
+uni1234 mylist-test: memory error+
+uni1234 mylist-test: leak error+
+uni1234 -DRIVER- test: make+
+uni1234 -DRIVER- test: memory error+
+uni1234 -DRIVER- test: leak error+
+uni1234 -DRIVER- test: make clean-
+uni1234 mylist-test: make clean+
+uni1234 revecho: make+
+Test 1:
+uni1234 revecho: memory error+
+uni1234 revecho: leak error+
+Test 2:
+uni1234 revecho: memory error+
+uni1234 revecho: leak error+
+Test 3:
+uni1234 revecho: memory error+
+uni1234 revecho: leak error+
+Test 4:
+uni1234 revecho: memory error+
+uni1234 revecho: leak error+
+uni1234 revecho, mylist.h: make clean+

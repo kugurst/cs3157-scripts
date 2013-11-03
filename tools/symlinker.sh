@@ -23,6 +23,13 @@ then
 		fi
 	done
 else
-	ln -s "$DIR/../Checks.java" "$DIR/../ConfigParser.java" "$DIR/../Grader.java" "$DIR/../*Generator.java" "$DIR/../StreamGobbler.java" "./"
+	ln -s "$DIR/../Checks.java" "$DIR/../ConfigParser.java" "$DIR/../Grader.java" "$DIR/../StreamGobbler.java" "./"
+	for file in $DIR/../*Generator.java
+	do
+		if [ "${file/GraderGenerator}" == "$file" ]
+		then
+			ln -s "$file"
+		fi
+	done
 fi
 

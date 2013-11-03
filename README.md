@@ -66,3 +66,9 @@ To Do
  - Add git commit regex checking to the frontend.
  - Allow input generators to be separate processes.
 
+#### P.S.
+
+YAML is a stickler for whitespace. A few rules:
+
+- There can be no tab characters in the file. Not even one. Not at the end of a line, or in a comment. No where is okay.
+- Indentation is king. Text that starts at the same indentation level are considered to be to entries of the same key. This is why the the subkeys of lists are indented with 4 spaces, instead of 2. The hyphen that denotes a list applies to all text that comes after it at the same level of indentation. This means that subkeys of list elements must be indented by at least 1 space past the beginning of the text of their parent. Visit the Wikipedia page on [YAML](http://en.wikipedia.org/wiki/YAML#Language_elements) for more information.
