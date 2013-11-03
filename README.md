@@ -54,7 +54,7 @@ Things You Can Do
 -----------------
 
 - A lot of stuff. Take a look at lab-template.yaml to see how flexible this system is.
- - As it stands now, all labs can be tested and graded using this system (provided a robust `InputGenerator`).
+ - As it stands now, all labs can be tested and scored using this system (provided a robust `InputGenerator`).
 
 To Do
 -----
