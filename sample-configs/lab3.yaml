@@ -1,0 +1,22 @@
+#extract-mbox:
+#  clone-from: /home/mark/Documents/cs3157/scripts/grading/lab3
+#  mbox-from: /home/mark/Documents/cs3157/scripts/grading/lab3.0
+#  dest: /home/mark/Documents/cs3157/scripts/grading/submissions
+part1:
+  names:
+    - mylist-test
+  test-drivers:
+    - drivers:
+      - test
+part2:
+  names:
+    - revecho:
+        args:
+          - dude world hello
+          - friend world hello
+          - DUDE, where's my car
+          - dude, I dunno
+  dependencies:
+    - part1
+  additional-clean:
+    - mylist.h

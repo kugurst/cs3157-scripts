@@ -43,9 +43,9 @@ public class GraderGenerator
 		LinkedHashMap<String, Object> options = ConfigParser.loadConfig(new File(args[0]));
 		if (options.containsKey("extract-mbox"))
 			extractMbox(options.remove("extract-mbox"));
+		System.out.println(options);
 		Object params[] = ConfigParser.parseConfig(options, partAnswers);
 		buildScript((Integer) params[0], (Boolean) params[1], partAnswers);
-		System.out.println(options);
 	}
 
 	@SuppressWarnings ("unchecked")
@@ -221,9 +221,9 @@ public class GraderGenerator
 		// Print out the symlink method
 		gw.println("public void symlink(File src, File dest, Checks check)\n" + "{\n"
 			+ "File[] srcFiles = src.listFiles();\n" + "for (File f : srcFiles) {\n"
-			+ "if (f.getName().equals(dest.getName()) || f.getName().equals(\"Makefile\"))\n"
-			+ "continue;\n" + "check.jockeyCommand(dest, \"ln -s ../\" + f.getName(), null);\n"
-			+ "}\n" + "}");
+			+ "if (f.getName().equals(dest.getName()) || f.getName().equals(\"Makefile\") "
+			+ "|| f.getName().equals(\".\") || f.getName().equals(\"..\"))\n" + "continue;\n"
+			+ "check.jockeyCommand(dest, \"ln -s ../\" + f.getName(), null);\n" + "}\n" + "}");
 		// Print out the copy folder method
 		gw.println("public void copyFiles(File src, File dest)\n" + "{\n" + "Path from;\n"
 			+ "Path to;\n" + "CopyOption[] options =\n"
@@ -287,7 +287,7 @@ public class GraderGenerator
 		ArrayList<Object> execOps;
 		for (LinkedHashMap<String, Object> answer : partAnswers) {
 			execOps = (ArrayList<Object>) answer.get("names");
-			System.out.println(execOps);
+			// System.out.println(execOps);
 
 			// Additional clean targets
 			StringBuilder addCleanTargs = new StringBuilder();
@@ -443,9 +443,8 @@ public class GraderGenerator
 
 			// Make the drivers for this folder
 			gw.println("File dest = new File(partDir, \"" + dirName + "\");\n"
-				+ "if (dest.exists())\n"
-				+ "deleteFolder(dest);\n"
-				+ "dest.mkdir();\n" // + "symlink(partDir, dest, check);\n"
+				+ "if (dest.exists())\n" + "deleteFolder(dest);\n" + "dest.mkdir();\n"
+				+ "symlink(partDir, dest, check);\n"
 				+ "File src = new File(student.getParent(), \"" + dirName + "\");\n"
 				+ "copyFiles(src, dest);\n" + "goodMake = check.checkMake(dest, \"" + driverExec
 				+ "\");");
@@ -479,7 +478,7 @@ public class GraderGenerator
 					+ (driver ? "-DRIVER- " : "") + exec + ": leak error+\");");
 			} else {
 				LinkedHashMap<String, Object> commandParams = (LinkedHashMap<String, Object>) o;
-				System.out.println(commandParams);
+				// System.out.println(commandParams);
 				String exec = null;
 				// This should actually only loop once
 				for (String s : commandParams.keySet())
@@ -590,7 +589,7 @@ public class GraderGenerator
 
 	private void printRunScript(PrintWriter gw, ArrayList<Object> scriptArr)
 	{
-		System.out.println("PRS: " + scriptArr);
+		// System.out.println("PRS: " + scriptArr);
 		if (scriptArr == null)
 			return;
 		for (Object scriptParams : scriptArr)

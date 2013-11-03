@@ -1,7 +1,7 @@
 #!/bin/bash
 unset CDPATH
 
-# Get directory of script
+# Get directory of script. Method taken from http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
   DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
@@ -20,12 +20,9 @@ then
 		if [ -h "$file" ]
 		then
 			rm "$file"
-		elif [ `expr match "$file" 'Generator.java'` -ne 0 ]
-		then
-			rm "$file"
 		fi
 	done
 else
-	ln -s "$DIR/../ArgumentGenerator.java" "$DIR/../Checks.java" "$DIR/../ConfigParser.java" "$DIR/../Grader.java" "$DIR/../InputGenerator.java" "$DIR/../StreamGobbler.java" "./"
+	ln -s "$DIR/../Checks.java" "$DIR/../ConfigParser.java" "$DIR/../Grader.java" "$DIR/../*Generator.java" "$DIR/../StreamGobbler.java" "./"
 fi
 

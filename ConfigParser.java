@@ -45,7 +45,7 @@ public final class ConfigParser
 			LinkedHashMap<String, Object> partOptions =
 				(LinkedHashMap<String, Object>) partMap.getValue();
 			partAnswers.add(partOptions);
-			System.out.println(partOptions);
+			// System.out.println(partOptions);
 		}
 		return new Object[] {threads, checkGit};
 	}

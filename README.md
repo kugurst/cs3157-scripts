@@ -1,39 +1,31 @@
-Mark's Multi-Threaded Grading Script Generator
+MTGSG: Multi-Threaded Grading Script Generator
 ==============================================
 
 What Is It?
 -----------
 
-This is a Java grading script generator with great extensibility. It's designed to be flexible enough to grade any kind of lab, but also powerful enough to almost completely automate the process. Even a lab like lab 7 can be automated using the utilities provided by this script, as well as a little sh know how.
+This is a grading script generator, written in Java, that takes a specification for a lab, written in YAML, and outputs a file, written for Java, that will grade assignments for the given specification. To be more accurate, it runs the commands, and outputs a summary of those commands to one file, and outputs the actual output of the commands to another file. This behavior can be augmented by using the various parameters detailed in the YAML configuration file.
 
-How Do I Use It?
-----------------
+How Do I Use and Run It?
+------------------------
 
-Just compile and run `GraderGenerator.java` and answer the questions it poses. Alternatively, you could just feed in a text file containing the answers.
-
-How Do I Run It?
-----------------
-
-Once you're done answering the questions, the grading script produces a file called `Grader.java`. This file, along with `Checks.java` and `StreamGobbler.java` should be coppied to the root directory of the students' lab directories. E.g.:
-
+First, you have to write a lab specification. A sample specification, detailing all the possible parameters and their behavior, has been written in `sample-configs/lab-template.yaml`. Make your own configuration (or suggest new parameters!) and when you're done, just run:
 ```bash
-$ ls
-Grader.java   Checks.java StreamGobbler.java aaa1111  aaa2222 aaa3333
-aaa4444 aaa5555...
+$ make yaml=labN.yaml grader
 ```
+This will create a file in the current directory called `Grader.java`, which will actually grade the specified lab. It should be placed in the same directory with all the student labs. To faciliate the process, I made a simple script in the `tools`, called `symlinker.sh` that will symlink all required file for `Grader.java`, as well as `Grader.java` itself, to whatever directory you run it in. Likewise, it will also remove all the files symlink'ed if you give it the argument `remove`. Note that this will remove all symlinks in the current directory, but only symlinks. Take a look at `tools/symlinker.sh` for implementation details.
 
-Alternatively, you could just symlink `Checks.java` and `StreamGobbler.java`, as they are unlikely to undergo code-breaking changes as compared to `Grader.java` (e.g. someone else runs `GraderGenerator`).
-
-For more information on how to get the student directories into this form, take a look at `mboxer` (details to come).
-
-Then, just compile and run `Grader` (it takes no commandline arguments and requires no user interaction). A note, `Grader` requires Java 7. A distribution of Java 7 is located in the original script directory. To run it, you'll need to run:
-
+Now that you have Grader.java and all the other files in the same location, compile it with:
 ```bash
-~/grading/grading-scripts/mark-java-grading/jdk1.7.0_45/bin/java Grader
+$ ~/grading/grading-scripts/mark-java-grading/jdk1.7.0_45/bin/javac Grader.java
 ```
+And run it with:
+```bash
+$ ~/grading/grading-scripts/mark-java-grading/jdk1.7.0_45/bin/java Grader
+```
+*Grader requires Java 1.7 functionality, but the CLIC computers installed Java version is 1.6, thus the need to specify the path to the Java 1.7 JDK.*
 
-Until CLIC updates the Java runtime on the CLIC machines.
-
+Grader.java requires no user interaction. After it is done, there will be two files in each student's folder.
 
 Where Are the Results?
 ----------------------
@@ -42,33 +34,35 @@ The results of each student are located at the root of their directory. The
 result consists of two files:
 
 ### SUMMARY.txt
-Contains a simple "yes" or "no" to whether or not a student completed the basic tests as specified by the commands that `Check` ran (and interpreted by `Grader`. Take a look at some of the older commits of `GraderMT` for a clearer picture). For example, `checkGitCommits` verifies if a student had at least 5 meaningful commits. `Grader` takes the return of `checkGitCommits` and outputs a simple summary to `SUMMARY.txt`, while `checkGitCommits` outputted the actual commits to:
+Contains a simple "+" or "-" to whether or not a student completed the basic tests as specified by the commands that `Check` ran (and interpreted by `Grader`. Take a look at some of the older commits of `GraderMT` for a clearer picture). For example, `checkGitCommits` verifies if a student had at least 5 meaningful commits. `Grader` takes the return of `checkGitCommits` and outputs a simple summary to `SUMMARY.txt`, while `checkGitCommits` outputted the actual commits to `GRADE_RESULT.txt`. *For memory errors and memory leaks, a "+" indicates that there were none.*
 
 ### GRADE_RESULT.txt
-Contains the output of each of the commands ran. Thus, you'll never actually need to manually test any of the student's code (provided they named their executables and libraries properly)! It will test the code for you, and log the standard out and standard error of each process to file.
+Contains the output of each of the commands ran. Thus, you'll never actually need to manually test any of the student's code (provided they named their executables and libraries properly, and placed them in the correct location)! It will test the code for you, and log the standard out and standard error of each process to file.
+
+How Can I Score a Lab?
+----------------------
+
+Since we can't know in advance all the requirements for a lab, and the point assignment, it's impossible to write an algorithm to *score* any given lab. Thus, I've provided an interface (well, an abstract class) that will allow you to implement that functionality. An `InputGenerator` has three functions:
+
+- String getNextInput()
+- void putNextStdOut(String)
+- void putNextStdErr(String)
+
+The first function is used to feed input into the current executable being tested. The last two, as their name implies, are used to send the output of that executable to the `InputGenerator`, so that it can decide what to send next, or to just function solely as a scorer. If you don't like Java, similar functionality is provided by the `simul-run` key, though at present it cannot send input to the current executable being tested.
 
 Things You Can Do
 -----------------
 
-- Run scripts at various points during grading (building, execution, cleaning).
-- Automatically kill processes based on a time out.
-- Run executables with multiple command line arguments.
-- Run test drivers specified in a given folder.
-- Regex matching for gitCommits (that is, a match means it's a meaningless commit).
-- Make a program read input from a file.
-- Part dependencies
-- More to come!
+- A lot of stuff. Take a look at lab-template.yaml to see how flexible this system is.
+ - As it stands now, all labs can be tested and graded using this system (provided a robust `InputGenerator`).
 
 To Do
 -----
 
 - Finish cleaning up the code in `Checks.java`.
-- Pipe process standard out to simultaneously running script.
 - Provide more user options.
  - Allow controlling of output level.
- - Create an actual configuration file syntax.
-- Make procedures for labs like lab 6 and lab 7.
-- Allow multiple executables per part.
-- Generate a routine for a scoring script (will take the output of the running program, as well as the check results).
-- ETC.
+ - Make `Grader.java` Java 1.6 compatible.
+ - Add git commit regex checking to the frontend.
+ - Allow input generators to be separate processes.
 
