@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
-import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
@@ -70,7 +70,7 @@ public class GraderGenerator
 		// git clone and git am each mbox file, threaded of course (because it takes a while)
 		// Make the thread
 		Thread[] cloneWorkers = new Thread[Runtime.getRuntime().availableProcessors()];
-		final ConcurrentLinkedDeque<File> mboxFiles = new ConcurrentLinkedDeque<File>();
+		final ConcurrentLinkedQueue<File> mboxFiles = new ConcurrentLinkedQueue<File>();
 		for (File mboxFile : mboxDir.listFiles())
 			if (mboxFile.getName().endsWith(".mbox"))
 				mboxFiles.add(mboxFile);
