@@ -40,6 +40,8 @@ public class Checks
 	// the student)
 	static String							header		= "==========ERROR==========\n";
 	static String							footer		= "=========================";
+	static String							fileSep		= System.getProperty("file.separator");
+	static String							progDir		= System.getProperty("user.dir") + fileSep;
 
 	// A field to contain the current process to be tested that is running.
 	Process									currProc;
@@ -154,7 +156,7 @@ public class Checks
 			PrintWriter simulWriter = null;
 			if (simulCommand != null) {
 				String simulName = simulCommand.split("\\ ")[0];
-				File simulOut = new File(workingDir, simulName);
+				File simulOut = new File(workingDir, simulName + ".txt");
 				simulOut.createNewFile();
 				simulWriter = new PrintWriter(new FileOutputStream(simulOut), true);
 			}
@@ -171,7 +173,7 @@ public class Checks
 						null, workingDir);
 			// If we have a simultaneous program, run it now
 			if (simulCommand != null) {
-				simul = runtime.exec(simulCommand, null, workingDir);
+				simul = runtime.exec(getExecPath(simulCommand), null, workingDir);
 				final BufferedReader stdout =
 					new BufferedReader(new InputStreamReader(simul.getInputStream()),
 						2 * (int) Math.pow(1024, 2));
@@ -294,7 +296,7 @@ public class Checks
 
 			// If we have a simultaneous program, run it now
 			if (simulCommand != null) {
-				simul = runtime.exec(simulCommand, null, workingDir);
+				simul = runtime.exec(getExecPath(simulCommand), null, workingDir);
 				final BufferedReader stdout =
 					new BufferedReader(new InputStreamReader(simul.getInputStream()),
 						2 * (int) Math.pow(1024, 2));
@@ -405,7 +407,7 @@ public class Checks
 		out.println("====Custom command:" + commandName + "====");
 		int retVal = -1;
 		try {
-			Process proc = runtime.exec(command, null, workingDir);
+			Process proc = runtime.exec(getExecPath(command), null, workingDir);
 			if (inputFile != null)
 				exec.execute(new LineFeeder(proc.getOutputStream(), inputFile));
 			currProc = proc;
@@ -637,6 +639,25 @@ public class Checks
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
+	}
+
+	private static String getExecPath(String command)
+	{
+		// If the command begins with a path separator, return the command, as its an absolute
+		// directory
+		if (command.startsWith(fileSep))
+			return command;
+		// If the commant starts with ~/, then expand that to the home directory
+		if (command.startsWith("~" + fileSep))
+			return System.getProperty("user.home")
+				+ command.replaceFirst("\\~\\" + fileSep, "\\" + fileSep);
+		String commandName = command.split("\\ ")[0];
+		// If the command contains a path separator, then it is a relative file and should be
+		// prepended with our path
+		if (commandName.contains(fileSep))
+			return progDir + command;
+		// Otherwise, it's just a normal command in PATH
+		return command;
 	}
 
 	private class LogReader implements Runnable

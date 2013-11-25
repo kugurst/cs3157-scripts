@@ -38,6 +38,11 @@ check-git: no
 # part3:...
 # I plan to update this later, but it's not really a pending issue
 part1:
+  # Sets the directory of this part to be the directory of the given
+  # file/directory. The name specified can have a path, like part1/Makefile.
+  # If the specified item is a directory, the part directory will be that. If
+  # it is a file, the part directory will be the parent directory of that file.
+  locate: Makefile
   # The list of executables to test. Each one supports a variety of options
   names:
     # The name of the executable. It doesn't have to have any options, in which

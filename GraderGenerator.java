@@ -26,7 +26,7 @@ public class GraderGenerator
 		possibleYes.add("");
 	}
 
-	private Boolean			TEST		= false;
+	private Boolean			TEST		= true;
 	Executor				exec		= Executors.newCachedThreadPool();
 	Pattern					numberPat	= Pattern.compile("\\d+");
 
@@ -189,7 +189,8 @@ public class GraderGenerator
 			+ "import java.util.concurrent.Executors;\n" + "import java.nio.file.CopyOption;\n"
 			+ "import java.nio.file.Files;\n" + "import java.nio.file.Path;\n"
 			+ "import java.nio.file.StandardCopyOption;\n"
-			+ "import java.util.concurrent.atomic.AtomicInteger;");
+			+ "import java.util.concurrent.atomic.AtomicInteger;\n"
+			+ "import java.util.LinkedList;");
 		// Print out the static, single-threaded portion
 		gw.println("public class Grader\n" + "{\n"
 			+ "AtomicInteger counter = new AtomicInteger(0);\n"
@@ -236,6 +237,19 @@ public class GraderGenerator
 			+ "from = f.toPath();\n" + "to = new File(dest, f.getName()).toPath();\n" + "try {\n"
 			+ "Files.copy(from, to, options);\n" + "} catch (IOException e) {\n"
 			+ "e.printStackTrace();\n" + "}\n" + "}\n" + "}\n" + "}");
+		// Print out the locate method
+		gw.println("private File locate(File root, String path)\n" + "{\n"
+			+ "if (root == null || !root.exists())\n" + "return null;\n" + "if (root.isFile())\n"
+			+ "return root.getParentFile();\n"
+			+ "LinkedList<File> dirs = new LinkedList<File>();\n" + "dirs.add(root);\n"
+			+ "File dir = null;\n" + "File curDir;\n"
+			+ "while ((curDir = dirs.poll()) != null) {\n"
+			+ "for (File f : curDir.listFiles()) {\n"
+			+ "if (f.getName().equals(\".\") || f.getName().equals(\"..\"))\n" + "continue;\n"
+			+ "if (f.isDirectory())\n" + "dirs.add(f);\n" + "}\n"
+			+ "File f = new File(curDir, path);\n" + "if (f.exists()) {\n" + "if (f.isFile())\n"
+			+ "dir = f.getParentFile();\n" + "else\n" + "dir = f;\n" + "break;\n" + "}\n" + "}\n"
+			+ "return dir;\n" + "}");
 
 		// Now for GraderWorker
 		gw.println("class GraderWorker implements Runnable\n"
@@ -297,7 +311,10 @@ public class GraderGenerator
 					addCleanTargs.append(", " + s);
 
 			// Set the current part directory to here
-			gw.println("partDir = new File(student, \"part" + partNum + "\");");
+			if (answer.containsKey("locate"))
+				gw.println("partDir = locate(student, \"" + (String) answer.get("locate") + "\");");
+			else
+				gw.println("partDir = new File(student, \"part" + partNum + "\");");
 
 			// Preliminary clean
 			String execNames = null;

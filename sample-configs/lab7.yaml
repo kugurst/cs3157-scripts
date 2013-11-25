@@ -1,0 +1,12 @@
+http-server:
+    locate: Makefile
+    names:
+        - http-server:
+            limit: 10
+            arg-gen: PortGenLab7(student)
+            simul-run: ./test-server.sh
+    # Make sure the file actually existed
+    script-after-building:
+        - ./run-mdb-server.sh
+    script-after-run:
+        - ./kill-mdb-server.sh
