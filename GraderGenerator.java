@@ -26,7 +26,7 @@ public class GraderGenerator
 		possibleYes.add("");
 	}
 
-	private Boolean			TEST		= true;
+	private Boolean			TEST		= false;
 	Executor				exec		= Executors.newCachedThreadPool();
 	Pattern					numberPat	= Pattern.compile("\\d+");
 
