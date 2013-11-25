@@ -12,6 +12,7 @@ int main()
     while (fgets(buf, sizeof(buf), stdin))
         if(buf[0] == '\r' && buf[1] == '\n')
             break;
+    memset(buf, 0, bufSize * sizeof(char));
     // Safety first
     if (ferror(stdin)) {
         perror(NULL);
@@ -21,9 +22,10 @@ int main()
     size_t bytesRead;
     while ((bytesRead = fread(buf, sizeof(char), bufSize, stdin)) == bufSize)
         fwrite(buf, sizeof(char), bytesRead, stdout);
-    if (feof(stdin))
-        fwrite(buf, sizeof(char), bytesRead, stdout);
-    else if (ferror(stdin)) {
+    if (feof(stdin)) {
+        if (bytesRead > 4 && bytesRead != bufSize)
+            fwrite(buf, sizeof(char), bytesRead - 4, stdout);
+    } else if (ferror(stdin)) {
         perror(NULL);
         exit(1);
     }

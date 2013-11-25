@@ -1,5 +1,5 @@
 #!/bin/bash
-htmlDir=~/www.freewebsitetemplates.com
+htmlDir=~/www.freewebsitetemplates.com/preview/hairstylesalon
 cp -r "$htmlDir" ./
 progDir=.
 port=$(java -cp ".:$progDir" PortGenLab7)

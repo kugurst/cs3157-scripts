@@ -1,6 +1,7 @@
 #!/bin/bash
 port=$(cat mdb-port.txt)
 progDir=.
+htmlDir=~/www.freewebsitetemplates.com/preview/hairstylesalon
 ncDir="test"
 rm -rf "$ncDir"
 mkdir "$ncDir"
@@ -37,6 +38,8 @@ for file in "${fileArr[@]}"; do
         "Connection: keep-alive\r\n" \
         "\r\n" \
     | nc localhost 8888 | "$progDir/header-remover" > "$ncDir/$file"
+    
+    diff "$htmlDir/$file" "$ncDir/$file" >> "DIFF.txt" 2>&1
 done
 
 # Now for mdb-lookup-server
