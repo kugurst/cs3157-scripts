@@ -45,7 +45,7 @@ public class GraderGenerator
 			extractMbox(options.remove("extract-mbox"));
 		System.out.println(options);
 		Object params[] = ConfigParser.parseConfig(options, partAnswers);
-		buildScript((Integer) params[0], (Boolean) params[1], partAnswers);
+		buildScript((Integer) params[0], (Boolean) params[1], (String) params[2], partAnswers);
 	}
 
 	@SuppressWarnings ("unchecked")
@@ -158,7 +158,7 @@ public class GraderGenerator
 	}
 
 	@SuppressWarnings ({"unchecked"})
-	private void buildScript(int threads, boolean checkGit,
+	private void buildScript(int threads, boolean checkGit, String rootDir,
 		LinkedList<LinkedHashMap<String, Object>> partAnswers)
 	{
 		File graderFile;
@@ -211,8 +211,8 @@ public class GraderGenerator
 		if (threads > Runtime.getRuntime().availableProcessors() || threads <= 0)
 			threads = Runtime.getRuntime().availableProcessors() / 2;
 		// Print out the main method
-		gw.println("public static void main(String[] args)\n" + "{\n" + "new Grader(\"./\", "
-			+ threads + ");\n" + "}");
+		gw.println("public static void main(String[] args)\n" + "{\n" + "new Grader(\"" + rootDir
+			+ "\", " + threads + ");\n" + "}");
 		// Print out the folder delete method
 		gw.println("private void deleteFolder(File source)\n" + "{\n"
 			+ "File[] contents = source.listFiles();\n" + "for (File f : contents) {\n"

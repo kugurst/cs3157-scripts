@@ -39,6 +39,7 @@ public final class ConfigParser
 				.getRuntime().availableProcessors() / 2;
 		boolean checkGit =
 			options.containsKey("check-git") ? (Boolean) options.remove("check-git") : true;
+		String rootDir = options.containsKey("uni-dir") ? (String) options.remove("uni-dir") : "./";
 		// for each part
 		for (Map.Entry<String, Object> partMap : options.entrySet()) {
 			// Get the actual mappigns
@@ -47,7 +48,7 @@ public final class ConfigParser
 			partAnswers.add(partOptions);
 			// System.out.println(partOptions);
 		}
-		return new Object[] {threads, checkGit};
+		return new Object[] {threads, checkGit, rootDir};
 	}
 
 }

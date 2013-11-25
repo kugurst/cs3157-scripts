@@ -83,7 +83,9 @@ part1:
         #  the process
         # A line consisting of "20" to indicate the end of stderr from
         #  the process
-        # This command has the same working directory of the running process,
+        # This command has the same working directory of the process being
+        # tested, and relative paths in the command name are resolved from the
+        # directory Grader is run.
         # i.e. partDir.
         simul-run: cat
   # Test drivers that run after the completion of all the above commands. They
@@ -105,7 +107,9 @@ part1:
   #       args:
   #         - hi
   # Is not possible at the moment. The working directory of these scripts is
-  # the partDir of the current student being graded.
+  # the partDir of the current student being graded. Additionally, relative
+  # paths in the command name are resolved against the directory where Grader
+  # was run
   script-before-building:
     - ls
   script-after-building:
