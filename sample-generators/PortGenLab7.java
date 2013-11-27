@@ -38,7 +38,7 @@ public class PortGenLab7 implements ArgumentGenerator
 			httpPortNo = Integer.toString(socket.getLocalPort());
 			socket.close();
 		} catch (IOException e) {} // It shouldn't fail
-		return httpPortNo + " ./htdocs 127.0.0.1 " + mdbPortNo;
+		return httpPortNo + " ./htdocs/preview/hairstylesalon 127.0.0.1 " + mdbPortNo;
 	}
 
 	public static void main(String[] args)

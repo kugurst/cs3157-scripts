@@ -1,6 +1,8 @@
 #!/bin/bash
 # Setting up some variables
 port=$(cat http-port.txt)
+# Testing
+port=${port:-8888}
 # We don't want to resolve our own symlink
 progDir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 htmlDir=./htdocs
@@ -26,8 +28,9 @@ fileArr=( "" "css/style.css" "shared/previews.css"
 "fonts/ChangaOne/ChangaOne-Regular.ttf" "fonts/Comfortaa/Comfortaa-Regular.ttf"
 "favicon.ico" )
 
-# Removing the DIFF file, as we append to it
-rm -f "DIFF.txt"
+# Removing the test file, as we append to it
+testFile="TEST.txt"
+rm -f "$testFile"
 
 # For each file
 for file in "${fileArr[@]}"; do
@@ -47,12 +50,12 @@ for file in "${fileArr[@]}"; do
         "Referer: http://localhost:$port/\r\n" \
         "Connection: keep-alive\r\n" \
         "\r\n" \
-    | nc localhost 8888 | "$progDir/header-remover" > "$ncDir/${file:-$indexFile}"
+    | nc localhost "$port" | "$progDir/header-remover" > "$ncDir/${file:-$indexFile}"
     
     # Diff each file and record the differences, for browser-less verification
-    echo "${file:-$indexFile}:" >> "DIFF.txt"
-    diff "$htmlDir/${file:-$indexFile}" "$ncDir/${file:-$indexFile}" >> "DIFF.txt" 2>&1
-    echo "-----------------------------------------------------------" >> "DIFF.txt"
+    echo "${file:-$indexFile}:" >> "$testFile"
+    diff "$htmlDir/${file:-$indexFile}" "$ncDir/${file:-$indexFile}" >> "$testFile" 2>&1
+    echo "-----------------------------------------------------------" >> "$testFile"
 done
 
 # Now for mdb-lookup-server
@@ -71,11 +74,63 @@ for file in "${fileArr[@]}"; do
         "Referer: http://localhost:$port/\r\n" \
         "Connection: keep-alive\r\n" \
         "\r\n" \
-    | nc localhost 8888 | "$progDir/header-remover" > "$ncDir/$file"
+    | nc localhost "$port" | "$progDir/header-remover" > "$ncDir/$file"
 done
 
+# Testing for security: can I access a file outside of this directory?
+filePath="../../js/jquery"
+fileName="jquery-1.5.2.min.js"
+echo -ne \
+    "GET /$filePath/$fileName HTTP/1.1\r\n" \
+    "Host: localhost:$port\r\n" \
+    "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0\r\n" \
+    "Accept: */*\r\n" \
+    "Accept-Language: en-US,en;q=0.5\r\n" \
+    "Accept-Encoding: gzip, deflate\r\n" \
+    "Referer: http://localhost:$port/\r\n" \
+    "Connection: keep-alive\r\n" \
+    "\r\n" \
+| nc localhost "$port" | "$progDir/header-remover" > "$ncDir/$fileName"
+echo -e "\nContent of jquery.js:" >> "testFile"
+cat "$ncDir/$fileName:" >> "$testFile"
+echo "-----------------------------------------------------------" >> "$testFile"
+
+# Testing for method: do I get a 501?
+file="news.php"
+echo -ne \
+    "HEAD /$file HTTP/1.1\r\n" \
+    "Host: localhost:$port\r\n" \
+    "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0\r\n" \
+    "Accept: */*\r\n" \
+    "Accept-Language: en-US,en;q=0.5\r\n" \
+    "Accept-Encoding: gzip, deflate\r\n" \
+    "Referer: http://localhost:$port/\r\n" \
+    "Connection: keep-alive\r\n" \
+    "\r\n" \
+| nc localhost "$port" | "$progDir/header-remover" > "$ncDir/${file:-$indexFile}"
+echo "${file:-$indexFile}:" >> "$testFile"
+cat "$ncDir/${file:-$indexFile}" >> "$testFile"
+echo "-----------------------------------------------------------" >> "$testFile"
+
+# Testing http version: do I get a 500?
+file="index.php"
+echo -ne \
+    "GET /$file HTTP/1.2\r\n" \
+    "Host: localhost:$port\r\n" \
+    "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0\r\n" \
+    "Accept: */*\r\n" \
+    "Accept-Language: en-US,en;q=0.5\r\n" \
+    "Accept-Encoding: gzip, deflate\r\n" \
+    "Referer: http://localhost:$port/\r\n" \
+    "Connection: keep-alive\r\n" \
+    "\r\n" \
+| nc localhost "$port" | "$progDir/header-remover" > "$ncDir/${file:-$indexFile}"
+echo "${file:-$indexFile}:" >> "$testFile"
+cat "$ncDir/${file:-$indexFile}" >> "$testFile"
+echo "-----------------------------------------------------------" >> "$testFile"
+
 # Throw in an empty request to "mimic" firefox's keep-alive
-nc -z localhost 8888
+nc -z localhost "$port"
 
 # Now, make another request to see how the server handled this
 file="mdb-lookup?key=Jae"
@@ -89,5 +144,5 @@ echo -ne \
     "Referer: http://localhost:$port/\r\n" \
     "Connection: keep-alive\r\n" \
     "\r\n" \
-| nc localhost 8888 | "$progDir/header-remover" > "$ncDir/$file"
+| nc localhost "$port" | "$progDir/header-remover" > "$ncDir/$file"
 
