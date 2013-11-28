@@ -14,4 +14,4 @@ grader: default
 	java -cp .:tools/snakeyaml-1.11.jar GraderGenerator $(yaml)
 
 clean:
-	$(RM) *.class tools/*.class
+	$(RM) *.class tools/*.class *~ tools/*~

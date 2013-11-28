@@ -16,7 +16,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -35,6 +34,8 @@ public class Checks
 	// The stdout and stderr for this class
 	final PrintWriter						out;
 	final PrintWriter						err;
+
+	final static int						BUFF_SIZE	= 2 * (int) Math.pow(1024, 2);
 
 	// The header and the footer to denote System errors that occur (and may or may not be due to
 	// the student)
@@ -55,16 +56,11 @@ public class Checks
 	LinkedList<String>						commitTitles;
 	LinkedList<String>						commitBodies;
 	public static HashSet<String>			invalidCommitRegex;
-	AtomicBoolean							pushOkay	= new AtomicBoolean(false);
 	private LinkedBlockingQueue<Integer>	messanger;
 	private LinkedBlockingQueue<String>		pipe;
 
 	public boolean checkMakeClean(File partDir, String makeName)
 	{
-		synchronized (pushOkay) {
-			messanger.clear();
-			pushOkay.set(false);
-		}
 		out.println("Checking make clean:");
 		// Holding the return value. We still need to clean up the directory (so we can't return
 		// directly)
@@ -77,12 +73,9 @@ public class Checks
 			Process makeClean = runtime.exec("make clean", null, partDir);
 			currProc = makeClean;
 			final BufferedReader stdout =
-				new BufferedReader(new InputStreamReader(makeClean.getInputStream()),
-					2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(makeClean.getInputStream()), BUFF_SIZE);
 			final BufferedReader stderr =
-				new BufferedReader(new InputStreamReader(makeClean.getErrorStream()),
-					2 * (int) Math.pow(1024, 2));
-			pushOkay.set(true);
+				new BufferedReader(new InputStreamReader(makeClean.getErrorStream()), BUFF_SIZE);
 			// Print the stdout of this process
 			exec.execute(new StreamPrinter(1, stdout, 1, 0));
 			// Print the stderr of this process
@@ -133,10 +126,6 @@ public class Checks
 	public boolean[] testCommand(File workingDir, String command, File inputFile, int limit,
 		ArgumentGenerator gen, String simulCommand, boolean noValgrind)
 	{
-		synchronized (pushOkay) {
-			messanger.clear();
-			pushOkay.set(false);
-		}
 		// Marking the command name
 		final String commandName = command.split("\\ ")[0];
 		out.println("Command results:");
@@ -171,15 +160,15 @@ public class Checks
 				proc =
 					runtime.exec((noValgrind ? "" : "valgrind --leak-check=yes ./") + command,
 						null, workingDir);
+			// Print the pid of this process
+			printPid(proc, workingDir);
 			// If we have a simultaneous program, run it now
 			if (simulCommand != null) {
 				simul = runtime.exec(getExecPath(simulCommand), null, workingDir);
 				final BufferedReader stdout =
-					new BufferedReader(new InputStreamReader(simul.getInputStream()),
-						2 * (int) Math.pow(1024, 2));
+					new BufferedReader(new InputStreamReader(simul.getInputStream()), BUFF_SIZE);
 				final BufferedReader stderr =
-					new BufferedReader(new InputStreamReader(simul.getErrorStream()),
-						2 * (int) Math.pow(1024, 2));
+					new BufferedReader(new InputStreamReader(simul.getErrorStream()), BUFF_SIZE);
 				exec.execute(new StreamPrinter(simulWriter, stdout));
 				exec.execute(new StreamPrinter(simulWriter, stderr));
 			}
@@ -190,12 +179,9 @@ public class Checks
 			currProc = proc;
 
 			final BufferedReader stdout =
-				new BufferedReader(new InputStreamReader(proc.getInputStream()),
-					2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(proc.getInputStream()), BUFF_SIZE);
 			final BufferedReader stderr =
-				new BufferedReader(new InputStreamReader(proc.getErrorStream()),
-					2 * (int) Math.pow(1024, 2));
-			pushOkay.set(true);
+				new BufferedReader(new InputStreamReader(proc.getErrorStream()), BUFF_SIZE);
 			// Print the stdout of this process
 			exec.execute(new StreamPrinter(1, stdout, 2, 0, simulCommand != null));
 			// This stderr stream contains the output of valgrind. We can easily check for
@@ -243,6 +229,31 @@ public class Checks
 		return streamFindings;
 	}
 
+	private void printPid(Process proc, File workingDir)
+	{
+		try {
+			// Get the PID of the process
+			Field f = proc.getClass().getDeclaredField("pid");
+			f.setAccessible(true);
+			String pid = f.get(proc).toString();
+			File pidFile = new File(workingDir, "val-pid.txt");
+			pidFile.createNewFile();
+			PrintWriter pidOut = new PrintWriter(pidFile);
+			pidOut.print(pid);
+			pidOut.close();
+		} catch (NoSuchFieldException e) {
+			e.printStackTrace();
+		} catch (SecurityException e) {
+			e.printStackTrace();
+		} catch (IllegalArgumentException e) {
+			e.printStackTrace();
+		} catch (IllegalAccessException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
 	/** This command tests some arbitrary command by directly calling exec on the given command
 	 * string. It takes two optional arguments. <code>inputFile</code> refers to a file to be fed
 	 * directly into the program's stdin, and <code>limit</code> refers to how long in seconds to
@@ -256,10 +267,6 @@ public class Checks
 	public boolean[] testCommand(File workingDir, String command, InputGenerator input, int limit,
 		ArgumentGenerator gen, String simulCommand, boolean noValgrind)
 	{
-		synchronized (pushOkay) {
-			messanger.clear();
-			pushOkay.set(false);
-		}
 		// Marking the command name
 		final String commandName = command.split("\\ ")[0];
 		out.println("Command results:");
@@ -293,16 +300,16 @@ public class Checks
 				proc =
 					runtime.exec((noValgrind ? "" : "valgrind --leak-check=yes ./") + command,
 						null, workingDir);
+			// Print the pid of this process
+			printPid(proc, workingDir);
 
 			// If we have a simultaneous program, run it now
 			if (simulCommand != null) {
 				simul = runtime.exec(getExecPath(simulCommand), null, workingDir);
 				final BufferedReader stdout =
-					new BufferedReader(new InputStreamReader(simul.getInputStream()),
-						2 * (int) Math.pow(1024, 2));
+					new BufferedReader(new InputStreamReader(simul.getInputStream()), BUFF_SIZE);
 				final BufferedReader stderr =
-					new BufferedReader(new InputStreamReader(simul.getErrorStream()),
-						2 * (int) Math.pow(1024, 2));
+					new BufferedReader(new InputStreamReader(simul.getErrorStream()), BUFF_SIZE);
 				exec.execute(new StreamPrinter(simulWriter, stdout));
 				exec.execute(new StreamPrinter(simulWriter, stderr));
 			}
@@ -314,12 +321,9 @@ public class Checks
 			currProc = proc;
 
 			final BufferedReader stdout =
-				new BufferedReader(new InputStreamReader(proc.getInputStream()),
-					2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(proc.getInputStream()), BUFF_SIZE);
 			final BufferedReader stderr =
-				new BufferedReader(new InputStreamReader(proc.getErrorStream()),
-					2 * (int) Math.pow(1024, 2));
-			pushOkay.set(true);
+				new BufferedReader(new InputStreamReader(proc.getErrorStream()), BUFF_SIZE);
 			// Print the stdout of this process
 			if (input != null)
 				exec.execute(new StreamPrinter(1, stdout, 2, 0, input, simulCommand != null));
@@ -399,10 +403,6 @@ public class Checks
 
 	public int runCommand(File workingDir, String command, File inputFile, int limit)
 	{
-		synchronized (pushOkay) {
-			messanger.clear();
-			pushOkay.set(false);
-		}
 		String commandName = command.split("\\ ")[0];
 		out.println("====Custom command:" + commandName + "====");
 		int retVal = -1;
@@ -413,12 +413,9 @@ public class Checks
 			currProc = proc;
 			// Get the process streams
 			final BufferedReader stdout =
-				new BufferedReader(new InputStreamReader(proc.getInputStream()),
-					2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(proc.getInputStream()), BUFF_SIZE);
 			final BufferedReader stderr =
-				new BufferedReader(new InputStreamReader(proc.getErrorStream()),
-					2 * (int) Math.pow(1024, 2));
-			pushOkay.set(true);
+				new BufferedReader(new InputStreamReader(proc.getErrorStream()), BUFF_SIZE);
 			// Print them
 			exec.execute(new StreamPrinter(1, stdout, 0, 0));
 			exec.execute(new StreamPrinter(2, stderr, 0, 0));
@@ -454,14 +451,10 @@ public class Checks
 
 	public boolean[] checkMake(File partDir, String makeName)
 	{
-		synchronized (pushOkay) {
-			messanger.clear();
-			pushOkay.set(false);
-		}
 		out.println("Make results:");
 		String[] names = makeName.split(",\\ ");
 		Process makeProc = null;
-		if (!partDir.isDirectory())
+		if (partDir == null || !partDir.isDirectory())
 			return new boolean[names.length + 1];
 
 		// Run the make
@@ -469,12 +462,9 @@ public class Checks
 			makeProc = runtime.exec("make", null, partDir);
 			currProc = makeProc;
 			final BufferedReader stdout =
-				new BufferedReader(new InputStreamReader(makeProc.getInputStream()),
-					2 * (int) Math.pow(1024, 2));
+				new BufferedReader(new InputStreamReader(makeProc.getInputStream()), BUFF_SIZE);
 			final BufferedReader stderr =
-				new BufferedReader(new InputStreamReader(makeProc.getErrorStream()),
-					2 * (int) Math.pow(1024, 2));
-			pushOkay.set(true);
+				new BufferedReader(new InputStreamReader(makeProc.getErrorStream()), BUFF_SIZE);
 			// Print the stdout of this process
 			exec.execute(new StreamPrinter(1, stdout, 1, 0));
 			// If anything prints to here on make, then either gcc or make had an error, in which
@@ -615,6 +605,7 @@ public class Checks
 		err = new PrintWriter(fileStream, true);
 		invalidCommitRegex = new HashSet<String>();
 		messanger = new LinkedBlockingQueue<Integer>();
+		pipe = new LinkedBlockingQueue<String>();
 	}
 
 	private void killProcess()
@@ -666,8 +657,7 @@ public class Checks
 
 		public LogReader(InputStream stream)
 		{
-			logStream =
-				new BufferedReader(new InputStreamReader(stream), 2 * (int) Math.pow(1024, 2));
+			logStream = new BufferedReader(new InputStreamReader(stream), BUFF_SIZE);
 		}
 
 		@Override
@@ -709,7 +699,7 @@ public class Checks
 		}
 	}
 
-	private class StreamPrinter implements Runnable
+	public class StreamPrinter implements Runnable
 	{
 		PrintWriter		writer;
 		BufferedReader	stream;
@@ -840,10 +830,7 @@ public class Checks
 					else if (type == 2)
 						gen.putNextStdErr(null);
 				}
-				synchronized (pushOkay) {
-					if (pushOkay.get())
-						messanger.add(0);
-				}
+				messanger.add(0);
 			} catch (IOException e) {
 				System.err.println(header + "Grader " + number + ":");
 				e.printStackTrace();

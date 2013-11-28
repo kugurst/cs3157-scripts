@@ -4,7 +4,7 @@ http-server:
     names:
         - http-server:
             limit: 10
-            arg-gen: PortGenLab7(student)
+            arg-gen: PortGenLab7(partDir)
             simul-run: ./test-server.sh
     # Make sure the file actually existed
     script-after-building:
