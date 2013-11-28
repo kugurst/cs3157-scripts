@@ -32,7 +32,7 @@ fileArr=( "" "css/style.css" "shared/previews.css"
 testFile="TEST.txt"
 rm -f "$testFile"
 
-sleep 1
+sleep 3
 
 # For each file
 for file in "${fileArr[@]}"; do
@@ -95,7 +95,7 @@ echo -ne \
 | nc localhost "$port" | "$progDir/header-remover" > "$ncDir/$fileName"
 rm -rf "testFile"
 echo -e "\nContent of jquery.js:" >> "$testFile"
-cat "$ncDir/$fileName:" >> "$testFile"
+cat "$ncDir/$fileName" >> "$testFile"
 echo "-----------------------------------------------------------" >> "$testFile"
 
 # Testing for method: do I get a 501?
@@ -135,7 +135,7 @@ echo "-----------------------------------------------------------" >> "$testFile
 # Testing for bad request
 file="hairstyle.php"
 echo -ne \
-"GET $file HTTP/1.2\r\n"\
+"GET $file HTTP/1.1\r\n"\
 "Host: localhost:$port\r\n"\
 "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0\r\n"\
 "Accept: */*\r\n"\
@@ -166,7 +166,40 @@ echo -ne \
 "\r\n"\
 | nc localhost "$port" | "$progDir/header-remover" > "$ncDir/$file"
 
-# Now kill the http server
+# Testing if it can recover from a failed send
+file="mdb-lookup"
+echo -ne \
+"GET /$file HTTP/1.1\r\n"\
+"Host: localhost:$port\r\n"\
+"User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0\r\n"\
+"Accept: */*\r\n"\
+"Accept-Language: en-US,en;q=0.5\r\n"\
+"Accept-Encoding: gzip, deflate\r\n"\
+"Referer: http://localhost:$port/\r\n"\
+"Connection: keep-alive\r\n"\
+"\r\n"\
+| nc localhost "$port" > /dev/null 2>&1 &
+pid="$!"
+kill -s SIGINT "$pid"
+
+# Now grab another file
+file="contact.php"
+echo -ne \
+"GET /$file HTTP/1.1\r\n"\
+"Host: localhost:$port\r\n"\
+"User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:27.0) Gecko/20100101 Firefox/27.0\r\n"\
+"Accept: */*\r\n"\
+"Accept-Language: en-US,en;q=0.5\r\n"\
+"Accept-Encoding: gzip, deflate\r\n"\
+"Referer: http://localhost:$port/\r\n"\
+"Connection: keep-alive\r\n"\
+"\r\n"\
+| nc localhost "$port" | "$progDir/header-remover" > "$ncDir/${file:-$indexFile}"
+echo "${file:-$indexFile}:" >> "$testFile"
+diff "$htmlDir/${file:-$indexFile}" "$ncDir/${file:-$indexFile}" >> "$testFile" 2>&1
+echo "-----------------------------------------------------------" >> "$testFile"
+
+# Done: kill the http server
 httpPid=$(cat "val-pid.txt")
 kill -s SIGINT "$httpPid"
 rm -rf "val-pid.txt"

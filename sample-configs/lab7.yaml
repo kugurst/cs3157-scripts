@@ -1,9 +1,10 @@
 uni-dir: ../unis
+threads: 4
 http-server:
     locate: Makefile
     names:
         - http-server:
-            limit: 10
+            limit: 15
             arg-gen: PortGenLab7(partDir)
             simul-run: ./test-server.sh
     # Make sure the file actually existed
