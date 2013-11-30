@@ -16,6 +16,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -58,6 +59,9 @@ public class Checks
 	public static HashSet<String>			invalidCommitRegex;
 	private LinkedBlockingQueue<Integer>	messanger;
 	private LinkedBlockingQueue<String>		pipe;
+
+	private Process							simulProc;
+	private ReentrantLock					simulProcLock;
 
 	public boolean checkMakeClean(File partDir, String makeName)
 	{
@@ -165,6 +169,7 @@ public class Checks
 			// If we have a simultaneous program, run it now
 			if (simulCommand != null) {
 				simul = runtime.exec(getExecPath(simulCommand), null, workingDir);
+				simulProc = simul;
 				final BufferedReader stdout =
 					new BufferedReader(new InputStreamReader(simul.getInputStream()), BUFF_SIZE);
 				final BufferedReader stderr =
@@ -208,6 +213,9 @@ public class Checks
 			messanger.take();
 			if (simulCommand != null) {
 				simul.waitFor();
+				simulProcLock.lock();
+				simulProc = null;
+				simulProcLock.unlock();
 				messanger.take();
 				messanger.take();
 			}
@@ -306,6 +314,7 @@ public class Checks
 			// If we have a simultaneous program, run it now
 			if (simulCommand != null) {
 				simul = runtime.exec(getExecPath(simulCommand), null, workingDir);
+				simulProc = simul;
 				final BufferedReader stdout =
 					new BufferedReader(new InputStreamReader(simul.getInputStream()), BUFF_SIZE);
 				final BufferedReader stderr =
@@ -358,6 +367,9 @@ public class Checks
 			messanger.take();
 			if (simulCommand != null) {
 				simul.waitFor();
+				simulProcLock.lock();
+				simulProc = null;
+				simulProcLock.unlock();
 				messanger.take();
 				messanger.take();
 			}
@@ -606,16 +618,25 @@ public class Checks
 		invalidCommitRegex = new HashSet<String>();
 		messanger = new LinkedBlockingQueue<Integer>();
 		pipe = new LinkedBlockingQueue<String>();
+		simulProcLock = new ReentrantLock(true);
 	}
 
 	private void killProcess()
 	{
 		try {
 			// Get the PID of the process
-			Field f = currProc.getClass().getDeclaredField("pid");
+			Field f = Process.class.getDeclaredField("pid");
 			f.setAccessible(true);
+			Process kill;
+			// If there's a simultaneous process, kill it first
+			simulProcLock.lock();
+			if (simulProc != null) {
+				kill = runtime.exec("kill -s SIGINT " + f.get(simulProc));
+				kill.waitFor();
+			}
+			simulProcLock.unlock();
 			// Kill the process
-			Process kill = runtime.exec("kill -s SIGKILL " + f.get(currProc));
+			kill = runtime.exec("kill -s SIGKILL " + f.get(currProc));
 			kill.waitFor();
 		} catch (NoSuchFieldException e) {
 			e.printStackTrace();
