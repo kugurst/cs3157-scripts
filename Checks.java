@@ -624,18 +624,21 @@ public class Checks
 	private void killProcess()
 	{
 		try {
-			// Get the PID of the process
-			Field f = Process.class.getDeclaredField("pid");
-			f.setAccessible(true);
+			// PID of the process
+			Field f;
 			Process kill;
 			// If there's a simultaneous process, kill it first
 			simulProcLock.lock();
 			if (simulProc != null) {
+				f = simulProc.getClass().getDeclaredField("pid");
+				f.setAccessible(true);
 				kill = runtime.exec("kill -s SIGINT " + f.get(simulProc));
 				kill.waitFor();
 			}
 			simulProcLock.unlock();
 			// Kill the process
+			f = currProc.getClass().getDeclaredField("pid");
+			f.setAccessible(true);
 			kill = runtime.exec("kill -s SIGKILL " + f.get(currProc));
 			kill.waitFor();
 		} catch (NoSuchFieldException e) {
