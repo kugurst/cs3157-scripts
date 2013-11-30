@@ -1,4 +1,6 @@
 #!/bin/bash
+# Setting a trap, in case we receive a SIGINT from the grading script
+trap "rm -f val-pid.txt" SIGINT
 # Setting up some variables
 port=$(cat http-port.txt)
 # Testing
