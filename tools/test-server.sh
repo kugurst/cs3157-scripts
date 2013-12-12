@@ -54,7 +54,7 @@ for file in "${fileArr[@]}"; do
 "Referer: http://localhost:$port/\r\n"\
 "Connection: keep-alive\r\n"\
 "\r\n"\
-    | nc localhost "$port" | "$progDir/header-remover" > "$ncDir/${file:-$indexFile}"
+    | nc localhost "$port" | "$progDir/header-remover" "$ncDir/${file:-$indexFile}.err" > "$ncDir/${file:-$indexFile}"
     
     # Diff each file and record the differences, for browser-less verification
     echo "${file:-$indexFile}:" >> "$testFile"
@@ -78,7 +78,7 @@ for file in "${fileArr[@]}"; do
 "Referer: http://localhost:$port/\r\n"\
 "Connection: keep-alive\r\n"\
 "\r\n"\
-    | nc localhost "$port" | "$progDir/header-remover" > "$ncDir/$file"
+    | nc localhost "$port" | "$progDir/header-remover" "$ncDir/$file.err" > "$ncDir/$file"
 done
 
 # Testing for security: can I access a file outside of this directory?
@@ -94,7 +94,7 @@ echo -ne \
 "Referer: http://localhost:$port/\r\n"\
 "Connection: keep-alive\r\n"\
 "\r\n"\
-| nc localhost "$port" | "$progDir/header-remover" > "$ncDir/$fileName"
+| nc localhost "$port" | "$progDir/header-remover" "$ncDir/$fileName.err" > "$ncDir/$fileName"
 rm -rf "testFile"
 echo -e "\nContent of jquery.js:" >> "$testFile"
 cat "$ncDir/$fileName" >> "$testFile"
@@ -112,7 +112,7 @@ echo -ne \
 "Referer: http://localhost:$port/\r\n"\
 "Connection: keep-alive\r\n"\
 "\r\n"\
-| nc localhost "$port" | "$progDir/header-remover" > "$ncDir/${file:-$indexFile}"
+| nc localhost "$port" | "$progDir/header-remover" "$ncDir/${file:-$indexFile}.err" > "$ncDir/${file:-$indexFile}"
 echo "${file:-$indexFile}:" >> "$testFile"
 cat "$ncDir/${file:-$indexFile}" >> "$testFile"
 echo "-----------------------------------------------------------" >> "$testFile"
@@ -129,7 +129,7 @@ echo -ne \
 "Referer: http://localhost:$port/\r\n"\
 "Connection: keep-alive\r\n"\
 "\r\n"\
-| nc localhost "$port" | "$progDir/header-remover" > "$ncDir/${file:-$indexFile}"
+| nc localhost "$port" | "$progDir/header-remover" "$ncDir/${file:-$indexFile}.err" > "$ncDir/${file:-$indexFile}"
 echo "${file:-$indexFile}:" >> "$testFile"
 cat "$ncDir/${file:-$indexFile}" >> "$testFile"
 echo "-----------------------------------------------------------" >> "$testFile"
@@ -146,7 +146,7 @@ echo -ne \
 "Referer: http://localhost:$port/\r\n"\
 "Connection: keep-alive\r\n"\
 "\r\n"\
-| nc localhost "$port" | "$progDir/header-remover" > "$ncDir/${file:-$indexFile}"
+| nc localhost "$port" | "$progDir/header-remover" "$ncDir/${file:-$indexFile}.err" > "$ncDir/${file:-$indexFile}"
 echo "${file:-$indexFile}:" >> "$testFile"
 cat "$ncDir/${file:-$indexFile}" >> "$testFile"
 echo "-----------------------------------------------------------" >> "$testFile"
@@ -166,7 +166,7 @@ echo -ne \
 "Referer: http://localhost:$port/\r\n"\
 "Connection: keep-alive\r\n"\
 "\r\n"\
-| nc localhost "$port" | "$progDir/header-remover" > "$ncDir/$file"
+| nc localhost "$port" | "$progDir/header-remover" "$ncDir/$file.err" > "$ncDir/$file"
 
 # Testing if it can recover from a failed send
 file="mdb-lookup"
@@ -196,7 +196,7 @@ echo -ne \
 "Referer: http://localhost:$port/\r\n"\
 "Connection: keep-alive\r\n"\
 "\r\n"\
-| nc localhost "$port" | "$progDir/header-remover" > "$ncDir/${file:-$indexFile}"
+| nc localhost "$port" | "$progDir/header-remover" "$ncDir/${file:-$indexFile}.err" > "$ncDir/${file:-$indexFile}"
 echo "${file:-$indexFile}:" >> "$testFile"
 diff "$htmlDir/${file:-$indexFile}" "$ncDir/${file:-$indexFile}" >> "$testFile" 2>&1
 echo "-----------------------------------------------------------" >> "$testFile"

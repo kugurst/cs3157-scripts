@@ -3,14 +3,30 @@
 #include <string.h>
 #include <ctype.h>
 
+#define DMP(...) if (strDmp) { __VA_ARGS__; }
+#define DMPSTAT(...) if(statStrDmp) { __VA_ARGS__; }
+
 int verifyHeader(char *, int, int *);
 int isNumber(char *);
 void gobbleStdin(char *, int);
 
 char *delim = " ";
+FILE *statStrDmp = NULL;
 
-int main()
+int main(int argc, char **argv)
 {
+    // Make the file dump
+    FILE *strDmp = NULL;
+    // fprintf(stderr, "argc: %d\n", argc);
+    if (argc > 1) {
+        // fprintf(stderr, "argv: %s\n", argv[1]);
+        strDmp = fopen(argv[1], "wb");
+        if (strDmp == NULL) {
+            perror(NULL);
+            exit(1);
+        }
+        statStrDmp = strDmp;
+    }
     // Make the buffer
     int bufSize = 4096;
     char buf[bufSize];
@@ -22,6 +38,7 @@ int main()
     // Gobble (and verify) the header
     while (fgets(buf, sizeof(buf), stdin)) {
         int len = strlen(buf);
+        DMP(fwrite(buf, sizeof(char), len, strDmp));
         if (len < 2) {
             line = 1;
             break;
@@ -36,24 +53,30 @@ int main()
     memset(buf, 0, bufBlock);
     // Safety first
     if (ferror(stdin)) {
+        DMP(fclose(strDmp))
         perror(NULL);
         exit(1);
     }
     // Gobble the rest of stdin if the headers were bad
     if (line || !blankFound) {
         gobbleStdin(buf, bufSize);
+        DMP(fclose(strDmp))
         return 1;
     }
     // Write the file
     size_t bytesRead;
     while ((bytesRead = fread(buf, sizeof(char), bufSize, stdin)) == bufSize)
         fwrite(buf, sizeof(char), bytesRead, stdout);
+        DMP(fwrite(buf, sizeof(char), bytesRead, strDmp));
     if (feof(stdin) && bytesRead > 0) {
         fwrite(buf, sizeof(char), bytesRead, stdout);
+        DMP(fwrite(buf, sizeof(char), bytesRead, strDmp));
     } else if (ferror(stdin)) {
+        DMP(fclose(strDmp))
         perror(NULL);
         exit(1);
     }
+    DMP(fclose(strDmp))
     return 0;
 }
 
@@ -105,7 +128,9 @@ void gobbleStdin(char *buf, int bufSize)
     while (!feof(stdin)) {
         if (ferror(stdin))
             return;
-        fread(buf, sizeof(char), bufSize, stdin);
+        int bytesRead = 0;
+        if ((bytesRead = fread(buf, sizeof(char), bufSize, stdin)) > 0)
+            DMPSTAT(fwrite(buf, sizeof(char), bytesRead, statStrDmp));
     }
 }
 
